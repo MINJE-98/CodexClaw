@@ -36,6 +36,7 @@ export class PtyManager {
 
     const state = {
       preferredModel: null,
+      verboseOutput: false,
       currentWorkdir: this.config.runner.cwd,
       recentWorkdirs: [this.config.runner.cwd],
       ptySupported: null,
@@ -81,6 +82,18 @@ export class PtyManager {
       args.push("-m", state.preferredModel);
     }
     return args;
+  }
+
+  isVerbose(chatId) {
+    const state = this.ensureChatState(chatId);
+    return Boolean(state.verboseOutput);
+  }
+
+  setVerbose(chatId, enabled) {
+    const state = this.ensureChatState(chatId);
+    state.verboseOutput = Boolean(enabled);
+    this.onChange?.(this.exportState());
+    return state.verboseOutput;
   }
 
   getWorkdir(chatId) {
@@ -305,12 +318,14 @@ export class PtyManager {
       this.onChange?.(this.exportState());
 
       this.enqueueFlush(session.chatId);
-      await this.bot.telegram
-        .sendMessage(
-          session.chatId,
-          `Codex session exited (mode=${session.mode}, code=${exitCode}, signal=${signal}).`
-        )
-        .catch(() => {});
+      if (this.isVerbose(session.chatId)) {
+        await this.bot.telegram
+          .sendMessage(
+            session.chatId,
+            `Codex session exited (mode=${session.mode}, code=${exitCode}, signal=${signal}).`
+          )
+          .catch(() => {});
+      }
       session.throttledFlush?.cancel();
       this.sessions.delete(session.chatId);
     });
@@ -480,7 +495,7 @@ export class PtyManager {
         trackConversation: false
       });
 
-      if (options.notice) {
+      if (options.notice && this.isVerbose(chatId)) {
         await this.bot.telegram.sendMessage(chatId, options.notice);
       }
 
@@ -527,12 +542,14 @@ export class PtyManager {
         workdir: this.getWorkdir(chatId),
         resumeSessionId: projectState.lastSessionId || ""
       });
-      await this.bot.telegram.sendMessage(
-        chatId,
-        projectState.lastSessionId
-          ? "PTY unavailable on this host. Restoring the current project's Codex conversation in `codex exec resume` mode."
-          : "PTY unavailable on this host. Falling back to `codex exec` mode for this request."
-      );
+      if (this.isVerbose(chatId)) {
+        await this.bot.telegram.sendMessage(
+          chatId,
+          projectState.lastSessionId
+            ? "PTY unavailable on this host. Restoring the current project's Codex conversation in `codex exec resume` mode."
+            : "PTY unavailable on this host. Falling back to `codex exec` mode for this request."
+        );
+      }
       return {
         started: true,
         mode: "exec",
@@ -541,7 +558,7 @@ export class PtyManager {
       };
     }
 
-    if (!session.streamMessageIds.length) {
+    if (!session.streamMessageIds.length && this.isVerbose(chatId)) {
       const sent = await this.bot.telegram.sendMessage(
         chatId,
         projectState.lastSessionId
@@ -647,6 +664,7 @@ export class PtyManager {
 
       chats[chatId] = {
         preferredModel: state.preferredModel,
+        verboseOutput: Boolean(state.verboseOutput),
         currentWorkdir: this.serializeWorkdir(state.currentWorkdir),
         recentWorkdirs: (state.recentWorkdirs || []).map((workdir) => this.serializeWorkdir(workdir)),
         projects
@@ -704,6 +722,7 @@ export class PtyManager {
 
       this.chatState.set(String(chatId), {
         preferredModel: rawState?.preferredModel?.trim?.() || null,
+        verboseOutput: Boolean(rawState?.verboseOutput),
         currentWorkdir,
         recentWorkdirs: [currentWorkdir, ...recentWorkdirs.filter((workdir) => workdir !== currentWorkdir)].slice(0, 6),
         ptySupported: null,
@@ -726,6 +745,7 @@ export class PtyManager {
       lastExitSignal: projectState.lastExitSignal,
       projectSessionId: projectState.lastSessionId || null,
       preferredModel: state.preferredModel,
+      verboseOutput: Boolean(state.verboseOutput),
       ptySupported: state.ptySupported,
       workdir: this.getWorkdir(key),
       relativeWorkdir: this.getRelativeWorkdir(key),

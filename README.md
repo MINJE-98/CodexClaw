@@ -133,6 +133,7 @@ General:
 - `/auto <task>` - force a one-off `codex exec --full-auto`
 - `/plan <task>` - ask Codex for a plan only, without direct file modification intent
 - `/model [name|reset]` - show or set the model override for the current chat
+- `/verbose [on|off]` - show or toggle system notices for the current chat
 - `/skill list` - show skill switches for the current chat
 - `/skill status` - alias of `/skill list`
 - `/skill on <name>` - enable a skill for the current chat
@@ -175,6 +176,7 @@ Telegram adaptation notes:
 - `/sh` is implemented by the bot, never invokes a shell interpreter, and only accepts configured command prefixes
 - `/sh` is read-only by default; dangerous prefixes can be configured and require `--confirm` when writable mode is enabled
 - `/plan` translates to a planning-only prompt instead of passing a raw `/plan` slash command to Codex
+- `/verbose off` keeps Telegram output quiet by hiding fallback, startup, and session-exit notices for the current chat
 
 ## Streaming and Reasoning Visualization
 

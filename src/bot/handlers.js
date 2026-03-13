@@ -108,6 +108,7 @@ export function registerHandlers({
         "/auto <task> - 强制用 codex exec --full-auto 运行任务",
         "/plan <task> - 仅生成执行计划，不直接修改代码",
         "/model [name|reset] - 查看或设置当前 chat 的模型",
+        "/verbose [on|off] - 查看或切换系统提示输出",
         "/skill list - 查看当前 chat 的 skill 开关",
         "/skill status - 同 /skill list",
         "/skill on <name> - 启用 skill",
@@ -140,6 +141,7 @@ export function registerHandlers({
           status.ptySupported === null ? "unknown" : status.ptySupported ? "yes" : "no (exec fallback)"
         }`,
         `preferred model: ${status.preferredModel || "inherit codex default"}`,
+        `verbose: ${status.verboseOutput ? "on" : "off"}`,
         `command: ${status.command}`,
         `workspace root: ${status.workspaceRoot}`,
         `workdir: ${status.workdir}`,
@@ -504,6 +506,31 @@ export function registerHandlers({
         ? `模型已设置为 ${value}，并重建了当前会话。`
         : `模型已设置为 ${value}。`
     );
+  });
+
+  bot.command("verbose", async (ctx) => {
+    const value = extractCommandPayload(ctx.message.text, "verbose");
+    if (!value) {
+      await sendChunkedMarkdown(
+        ctx,
+        `当前系统提示输出: ${ptyManager.isVerbose(ctx.chat.id) ? "on" : "off"}`
+      );
+      return;
+    }
+
+    if (/^(on|true|1)$/i.test(value)) {
+      ptyManager.setVerbose(ctx.chat.id, true);
+      await sendChunkedMarkdown(ctx, "系统提示输出已开启。");
+      return;
+    }
+
+    if (/^(off|false|0)$/i.test(value)) {
+      ptyManager.setVerbose(ctx.chat.id, false);
+      await sendChunkedMarkdown(ctx, "系统提示输出已关闭。");
+      return;
+    }
+
+    await sendChunkedMarkdown(ctx, "用法: /verbose [on|off]");
   });
 
   bot.command("interrupt", async (ctx) => {

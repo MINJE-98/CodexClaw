@@ -8,11 +8,13 @@ import { PtyManager } from "../src/runner/ptyManager.js";
 function createManager(overrides = {}) {
   const runnerCwd = overrides.runnerCwd || process.cwd();
   const workspaceRoot = overrides.workspaceRoot || runnerCwd;
+  const telegram =
+    overrides.telegram || {
+      sendMessage: async () => ({})
+    };
   return new PtyManager({
     bot: {
-      telegram: {
-        sendMessage: async () => ({})
-      }
+      telegram
     },
     config: {
       runner: {
@@ -46,6 +48,15 @@ test("pty manager stores model preference per chat", () => {
 
   manager.clearPreferredModel(123);
   assert.equal(manager.getStatus(123).preferredModel, null);
+});
+
+test("pty manager stores verbose preference per chat", () => {
+  const manager = createManager();
+
+  assert.equal(manager.isVerbose(123), false);
+  manager.setVerbose(123, true);
+  assert.equal(manager.isVerbose(123), true);
+  assert.equal(manager.getStatus(123).verboseOutput, true);
 });
 
 test("pty manager status exposes runner workdir and MCP server names", () => {
@@ -184,4 +195,62 @@ test("pty manager exports and restores per-project conversation state", () => {
   assert.equal(restored.getStatus(99).projectSessionId, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
   restored.switchWorkdir(99, "project-a");
   assert.equal(restored.getStatus(99).projectSessionId, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+});
+
+test("pty manager exports and restores verbose preference", () => {
+  const manager = createManager();
+  manager.setVerbose(42, true);
+
+  const restored = createManager();
+  restored.restoreState(manager.exportState());
+
+  assert.equal(restored.isVerbose(42), true);
+});
+
+test("pty manager hides exec fallback notices when verbose output is off", async () => {
+  const sentMessages = [];
+  const manager = createManager({
+    telegram: {
+      sendMessage: async (chatId, text) => {
+        sentMessages.push({ chatId, text });
+        return { message_id: sentMessages.length };
+      }
+    }
+  });
+
+  manager.ensureSession = () => null;
+  manager.startExecSessionWithOptions = () => ({
+    mode: "exec",
+    streamMessageIds: [],
+    chatId: "77"
+  });
+
+  await manager.sendPrompt({ chat: { id: 77 } }, "who are u");
+
+  assert.equal(sentMessages.length, 0);
+});
+
+test("pty manager shows exec fallback notices when verbose output is on", async () => {
+  const sentMessages = [];
+  const manager = createManager({
+    telegram: {
+      sendMessage: async (chatId, text) => {
+        sentMessages.push({ chatId, text });
+        return { message_id: sentMessages.length };
+      }
+    }
+  });
+
+  manager.setVerbose(77, true);
+  manager.ensureSession = () => null;
+  manager.startExecSessionWithOptions = () => ({
+    mode: "exec",
+    streamMessageIds: [],
+    chatId: "77"
+  });
+
+  await manager.sendPrompt({ chat: { id: 77 } }, "who are u");
+
+  assert.equal(sentMessages.length, 1);
+  assert.match(sentMessages[0].text, /PTY unavailable/);
 });
