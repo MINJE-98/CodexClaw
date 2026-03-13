@@ -82,6 +82,8 @@ Subagents should be triggered only after:
 
 ## Recommended Deployment Phases
 
+Implementation roadmap: [phase-1-roadmap.md](/Users/ding/Documents/Code/Github/codex-telegram-claws/docs/phase-1-roadmap.md)
+
 ### Phase 1: Harden Current Single-Host Beta
 
 - Migrate core runtime modules to TypeScript.

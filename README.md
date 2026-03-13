@@ -119,6 +119,7 @@ Core modules:
 - `src/cron/scheduler.js`: proactive scheduled push
 
 Enterprise target architecture: [docs/enterprise-architecture.md](/Users/ding/Documents/Code/Github/codex-telegram-claws/docs/enterprise-architecture.md)
+Enterprise Phase 1 roadmap: [docs/phase-1-roadmap.md](/Users/ding/Documents/Code/Github/codex-telegram-claws/docs/phase-1-roadmap.md)
 
 ## Routing and MCP Boundary
 
