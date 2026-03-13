@@ -33,14 +33,17 @@ test("mcp client lists configured servers and their runtime state", () => {
     }
   });
 
-  assert.deepEqual(client.listServers().map((server) => ({
-    name: server.name,
-    enabled: server.enabled,
-    connected: server.connected
-  })), [
-    { name: "context7", enabled: true, connected: true },
-    { name: "sequential-thinking", enabled: true, connected: false }
-  ]);
+  assert.deepEqual(
+    client.listServers().map((server) => ({
+      name: server.name,
+      enabled: server.enabled,
+      connected: server.connected
+    })),
+    [
+      { name: "context7", enabled: true, connected: true },
+      { name: "sequential-thinking", enabled: true, connected: false }
+    ]
+  );
 });
 
 test("mcp client disable and enable update runtime state", async () => {

@@ -37,7 +37,10 @@ export class McpClient {
   }
 
   getServerConfig(serverName) {
-    return this.config.mcp.servers.find((server) => server.name === serverName) || null;
+    return (
+      this.config.mcp.servers.find((server) => server.name === serverName) ||
+      null
+    );
   }
 
   hasServer(serverName) {
@@ -138,7 +141,9 @@ export class McpClient {
 
     await this.disconnectServer(serverName);
     await this.connectServerByName(serverName);
-    return this.listServers().find((server) => server.name === serverName) || null;
+    return (
+      this.listServers().find((server) => server.name === serverName) || null
+    );
   }
 
   async disableServer(serverName) {
@@ -147,14 +152,16 @@ export class McpClient {
     }
 
     if (this.disabledServers.has(serverName)) {
-      const current = this.listServers().find((server) => server.name === serverName) || null;
+      const current =
+        this.listServers().find((server) => server.name === serverName) || null;
       return current ? { ...current, changed: false } : null;
     }
 
     this.disabledServers.add(serverName);
     await this.disconnectServer(serverName);
     this.onChange?.(this.exportState());
-    const current = this.listServers().find((server) => server.name === serverName) || null;
+    const current =
+      this.listServers().find((server) => server.name === serverName) || null;
     return current ? { ...current, changed: true } : null;
   }
 
@@ -163,8 +170,12 @@ export class McpClient {
       throw new Error(`Unknown MCP server: ${serverName}`);
     }
 
-    if (!this.disabledServers.has(serverName) && this.isServerConnected(serverName)) {
-      const current = this.listServers().find((server) => server.name === serverName) || null;
+    if (
+      !this.disabledServers.has(serverName) &&
+      this.isServerConnected(serverName)
+    ) {
+      const current =
+        this.listServers().find((server) => server.name === serverName) || null;
       return current ? { ...current, changed: false } : null;
     }
 
@@ -172,7 +183,8 @@ export class McpClient {
     this.disabledServers.delete(serverName);
     await this.connectServerByName(serverName);
     this.onChange?.(this.exportState());
-    const current = this.listServers().find((server) => server.name === serverName) || null;
+    const current =
+      this.listServers().find((server) => server.name === serverName) || null;
     return current ? { ...current, changed } : null;
   }
 
@@ -184,7 +196,9 @@ export class McpClient {
 
   restoreState(snapshot = {}) {
     const disabledServers = Array.isArray(snapshot?.disabledServers)
-      ? snapshot.disabledServers.filter((serverName) => this.hasServer(serverName))
+      ? snapshot.disabledServers.filter((serverName) =>
+          this.hasServer(serverName)
+        )
       : [];
 
     this.disabledServers = new Set(disabledServers);
@@ -215,7 +229,15 @@ export class McpClient {
     }
 
     const contextBlocks = [];
-    const toolNameHints = ["search", "query", "lookup", "retrieve", "context", "find", "read"];
+    const toolNameHints = [
+      "search",
+      "query",
+      "lookup",
+      "retrieve",
+      "context",
+      "find",
+      "read"
+    ];
 
     for (const [serverName, conn] of this.connections.entries()) {
       try {
@@ -243,7 +265,9 @@ export class McpClient {
 
         contextBlocks.push(`[${serverName}/${preferredTool.name}]\n${text}`);
       } catch (error) {
-        contextBlocks.push(`[${serverName}] MCP query failed: ${error.message}`);
+        contextBlocks.push(
+          `[${serverName}] MCP query failed: ${error.message}`
+        );
       }
     }
 

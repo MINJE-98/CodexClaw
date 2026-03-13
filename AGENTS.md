@@ -1,39 +1,54 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
-This repository is currently minimal and does not yet include application code, tests, or build tooling. Until a concrete stack is added, keep contributions organized with a predictable layout:
+## Repo Structure
 
-- `src/` for production code
-- `tests/` for automated tests
-- `assets/` for static files such as images or fixtures
-- `docs/` for design notes or operational guides
+- `src/index.js`: application entrypoint and subsystem wiring.
+- `src/bot/`: Telegram handlers, formatting, command parsing, i18n, middleware.
+- `src/orchestrator/`: routing, MCP client, skill registry, GitHub/MCP skills.
+- `src/runner/`: Codex PTY/exec management and restricted shell execution.
+- `src/cron/`: scheduled proactive jobs.
+- `tests/`: Node built-in test suite, one `*.test.js` file per module area.
 
-Keep modules small and grouped by feature. For example, place Telegram client code in `src/telegram/` and matching tests in `tests/telegram/`.
+## Start And Dev Commands
 
-## Build, Test, and Development Commands
-No project-specific commands are defined yet. When adding tooling, expose a minimal, documented set of commands such as:
+- `npm install`: install dependencies.
+- `npm run start`: start the Telegram bot with the current `.env`.
+- `npm run dev`: run the bot in watch mode for local development.
 
-- `npm install` or equivalent to install dependencies
-- `npm test` to run the full test suite
-- `npm run lint` to enforce style rules
-- `npm run dev` to start local development
+## Test Commands
 
-If you introduce a different stack, update this file in the same change so contributors have one reliable entry point.
+- `npm test`: run the full unit test suite with `node --test`.
+- `npm run check`: run a syntax check on the entrypoint and fail fast on invalid JS.
+- `npm run healthcheck`: run the local runtime health check.
 
-## Coding Style & Naming Conventions
-Use 4 spaces for indentation in Markdown, YAML, and Python-style formats; follow the formatter defaults for any language-specific toolchain you add. Prefer descriptive, lowercase directory names (`src/bot/`), `snake_case` for Python files, and `kebab-case` or framework-standard naming for frontend assets.
+## Lint And Format
 
-Add formatting and linting early and run them before opening a PR. Keep files ASCII unless the file already requires Unicode.
+- `npm run lint`: run ESLint over source, tests, scripts, and local JS/CJS config files.
+- `npm run lint:fix`: apply safe ESLint fixes.
+- `npm run format`: run Prettier across the repository.
+- `npm run format:check`: verify formatting without writing changes.
+- Do not submit formatting-only churn or rewrap unrelated files.
 
-## Testing Guidelines
-Place tests under `tests/` and mirror the source layout. Name test files after the unit under test, such as `tests/telegram/test_dispatcher.py` or `dispatcher.test.ts`. Cover new behavior and important edge cases; avoid merging untested logic.
+## Files And Paths You Must Not Change
 
-Document the exact test command in the project README and here once the framework is chosen.
+- Do not edit `.git/` or `node_modules/`.
+- Do not commit or rewrite `.env`, secrets, Telegram tokens, or local session artifacts.
+- Do not manually edit `.codex-telegram-claws-state.json`; it is runtime state.
+- Avoid changing files outside this repository root, even when `/repo` or shell features reference other workspaces.
 
-## Commit & Pull Request Guidelines
-There is no Git history in the current workspace, so no established commit pattern can be inferred. Use short, imperative commit messages and prefer Conventional Commit prefixes where helpful, such as `feat: add webhook handler` or `fix: guard empty update payload`.
+## Contribution Rules
 
-Pull requests should include a clear summary, testing notes, and linked issue references when applicable. Include screenshots or sample bot interactions for user-facing changes.
+- Use ES Modules and keep new files under the existing feature-oriented layout.
+- Keep user-facing bot copy in English by default. Localized strings must go through `src/bot/i18n.js`.
+- Prefer focused changes. Do not mix feature work with unrelated refactors.
+- Add or update tests for behavior changes in `tests/`.
 
-## Configuration & Secrets
-Do not commit API tokens, session files, or `.env` values. Keep local configuration in ignored files and document required environment variables in `README.md`.
+## Required Verification Before Commit
+
+- Run `npm run check`.
+- Run `npm run lint`.
+- Run `npm run format:check`.
+- Run `npm test`.
+- Run `npm run healthcheck`.
+- Review `git diff --stat` and `git status --short` for accidental edits.
+- If bot commands or behavior changed, update `README.md` and include a Telegram usage example in the PR or commit notes.

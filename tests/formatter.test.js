@@ -19,7 +19,9 @@ test("escapeMarkdownV2 escapes Telegram MarkdownV2 special characters", () => {
 });
 
 test("extractReasoning separates think blocks from visible output", () => {
-  const result = extractReasoning("before<think>first</think>middle<think>second</think>after");
+  const result = extractReasoning(
+    "before<think>first</think>middle<think>second</think>after"
+  );
 
   assert.equal(result.cleanText, "beforemiddleafter");
   assert.deepEqual(result.reasoningBlocks, ["first", "second"]);

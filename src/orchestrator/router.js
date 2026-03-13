@@ -39,7 +39,11 @@ export class Router {
     const githubSkill = this.skills.github;
     const mcpSkill = this.skills.mcp;
 
-    if (githubSkill && this.isSkillEnabled(chatId, "github") && githubSkill.supports(raw)) {
+    if (
+      githubSkill &&
+      this.isSkillEnabled(chatId, "github") &&
+      githubSkill.supports(raw)
+    ) {
       return {
         target: "skill",
         skill: "github",
@@ -47,7 +51,11 @@ export class Router {
       };
     }
 
-    if (mcpSkill && this.isSkillEnabled(chatId, "mcp") && mcpSkill.supports(raw)) {
+    if (
+      mcpSkill &&
+      this.isSkillEnabled(chatId, "mcp") &&
+      mcpSkill.supports(raw)
+    ) {
       return {
         target: "skill",
         skill: "mcp",

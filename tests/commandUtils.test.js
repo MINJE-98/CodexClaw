@@ -7,8 +7,14 @@ import {
 } from "../src/bot/commandUtils.js";
 
 test("extractCommandPayload removes telegram command prefix and bot suffix", () => {
-  assert.equal(extractCommandPayload("/exec@ExampleBot run tests", "exec"), "run tests");
-  assert.equal(extractCommandPayload("/model gpt-5-codex", "model"), "gpt-5-codex");
+  assert.equal(
+    extractCommandPayload("/exec@ExampleBot run tests", "exec"),
+    "run tests"
+  );
+  assert.equal(
+    extractCommandPayload("/model gpt-5-codex", "model"),
+    "gpt-5-codex"
+  );
   assert.equal(extractCommandPayload("/new", "new"), "");
 });
 
@@ -21,7 +27,10 @@ test("buildPlanPrompt forces planning-only behavior", () => {
 });
 
 test("suggestClosestWord returns the nearest supported command when the typo is small", () => {
-  assert.equal(suggestClosestWord("ststus", ["list", "status", "tools"]), "status");
+  assert.equal(
+    suggestClosestWord("ststus", ["list", "status", "tools"]),
+    "status"
+  );
   assert.equal(suggestClosestWord("zzz", ["list", "status", "tools"]), "");
 });
 

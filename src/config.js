@@ -58,7 +58,9 @@ function resolveDirectory(value, name, fallback = process.cwd()) {
   }
 
   if (value && value.trim()) {
-    console.warn(`[config] ${name} does not exist: ${candidate}. Falling back to ${resolvedFallback}`);
+    console.warn(
+      `[config] ${name} does not exist: ${candidate}. Falling back to ${resolvedFallback}`
+    );
   }
 
   return resolvedFallback;
@@ -78,14 +80,19 @@ function resolveFile(value, fallback) {
 function normalizeMcpServer(raw, index) {
   if (!raw || typeof raw !== "object") return null;
   if (!raw.name || !raw.command) {
-    throw new Error(`Invalid MCP server config at index ${index}: "name" and "command" are required.`);
+    throw new Error(
+      `Invalid MCP server config at index ${index}: "name" and "command" are required.`
+    );
   }
 
   return {
     name: String(raw.name),
     command: String(raw.command),
     args: Array.isArray(raw.args) ? raw.args.map(String) : [],
-    cwd: resolveDirectory(raw.cwd ? String(raw.cwd) : process.cwd(), `MCP_SERVERS[${index}].cwd`),
+    cwd: resolveDirectory(
+      raw.cwd ? String(raw.cwd) : process.cwd(),
+      `MCP_SERVERS[${index}].cwd`
+    ),
     env: raw.env && typeof raw.env === "object" ? raw.env : {}
   };
 }
@@ -93,33 +100,57 @@ function normalizeMcpServer(raw, index) {
 export function loadConfig() {
   const allowedUserIds = parseCsv(process.env.ALLOWED_USER_IDS);
   if (!allowedUserIds.length) {
-    throw new Error("ALLOWED_USER_IDS must contain at least one Telegram user id.");
+    throw new Error(
+      "ALLOWED_USER_IDS must contain at least one Telegram user id."
+    );
   }
 
-  const proactiveUserIds = parseCsv(process.env.PROACTIVE_USER_IDS || process.env.ALLOWED_USER_IDS);
+  const proactiveUserIds = parseCsv(
+    process.env.PROACTIVE_USER_IDS || process.env.ALLOWED_USER_IDS
+  );
   const rawMcpServers = parseJson(process.env.MCP_SERVERS, []);
   const mcpServers = Array.isArray(rawMcpServers)
-    ? rawMcpServers.map((server, index) => normalizeMcpServer(server, index)).filter(Boolean)
+    ? rawMcpServers
+        .map((server, index) => normalizeMcpServer(server, index))
+        .filter(Boolean)
     : [];
-  const runnerCwd = resolveDirectory(process.env.CODEX_WORKDIR, "CODEX_WORKDIR");
+  const runnerCwd = resolveDirectory(
+    process.env.CODEX_WORKDIR,
+    "CODEX_WORKDIR"
+  );
   const workspaceRoot = resolveDirectory(
     process.env.WORKSPACE_ROOT,
     "WORKSPACE_ROOT",
     runnerCwd
   );
-  const githubDefaultWorkdir = resolveDirectory(process.env.GITHUB_DEFAULT_WORKDIR, "GITHUB_DEFAULT_WORKDIR");
-  const rawShellAllowedCommands = parseJson(process.env.SHELL_ALLOWED_COMMANDS, []);
+  const githubDefaultWorkdir = resolveDirectory(
+    process.env.GITHUB_DEFAULT_WORKDIR,
+    "GITHUB_DEFAULT_WORKDIR"
+  );
+  const rawShellAllowedCommands = parseJson(
+    process.env.SHELL_ALLOWED_COMMANDS,
+    []
+  );
   const shellAllowedCommands = Array.isArray(rawShellAllowedCommands)
-    ? rawShellAllowedCommands.map((value) => String(value).trim()).filter(Boolean)
+    ? rawShellAllowedCommands
+        .map((value) => String(value).trim())
+        .filter(Boolean)
     : [];
-  const rawShellDangerousCommands = parseJson(process.env.SHELL_DANGEROUS_COMMANDS, []);
+  const rawShellDangerousCommands = parseJson(
+    process.env.SHELL_DANGEROUS_COMMANDS,
+    []
+  );
   const shellDangerousCommands = Array.isArray(rawShellDangerousCommands)
-    ? rawShellDangerousCommands.map((value) => String(value).trim()).filter(Boolean)
+    ? rawShellDangerousCommands
+        .map((value) => String(value).trim())
+        .filter(Boolean)
     : [];
   const shellEnabled = parseBoolean(process.env.SHELL_ENABLED, false);
 
   if (shellEnabled && !shellAllowedCommands.length) {
-    throw new Error("SHELL_ALLOWED_COMMANDS must contain at least one command prefix when SHELL_ENABLED=true.");
+    throw new Error(
+      "SHELL_ALLOWED_COMMANDS must contain at least one command prefix when SHELL_ENABLED=true."
+    );
   }
 
   return {
@@ -168,7 +199,9 @@ export function loadConfig() {
       token: process.env.GITHUB_TOKEN?.trim() || "",
       defaultWorkdir: githubDefaultWorkdir,
       defaultBranch: process.env.GITHUB_DEFAULT_BRANCH?.trim() || "main",
-      e2eCommand: process.env.E2E_TEST_COMMAND?.trim() || "npx playwright test --reporter=line"
+      e2eCommand:
+        process.env.E2E_TEST_COMMAND?.trim() ||
+        "npx playwright test --reporter=line"
     }
   };
 }

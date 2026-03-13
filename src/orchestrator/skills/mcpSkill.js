@@ -30,7 +30,15 @@ export class McpSkill {
 
   async handleCommand(rawText, locale = "en") {
     const stripped = rawText.replace(/^\/mcp(@\w+)?\s*/i, "").trim();
-    const supportedSubcommands = ["list", "status", "reconnect", "enable", "disable", "tools", "call"];
+    const supportedSubcommands = [
+      "list",
+      "status",
+      "reconnect",
+      "enable",
+      "disable",
+      "tools",
+      "call"
+    ];
     if (!stripped) {
       return {
         text: t(locale, "mcpHelp")
@@ -52,11 +60,15 @@ export class McpSkill {
     if (subcommand === "status") {
       const serverName = rest[0];
       const servers = this.mcpClient.listServers();
-      const targets = serverName ? servers.filter((server) => server.name === serverName) : servers;
+      const targets = serverName
+        ? servers.filter((server) => server.name === serverName)
+        : servers;
 
       if (!targets.length) {
         return {
-          text: serverName ? t(locale, "mcpUnknownServer", { name: serverName }) : t(locale, "mcpNoServers")
+          text: serverName
+            ? t(locale, "mcpUnknownServer", { name: serverName })
+            : t(locale, "mcpNoServers")
         };
       }
 
@@ -112,7 +124,9 @@ export class McpSkill {
         return { text: t(locale, "mcpNoTools", { server: serverName }) };
       }
 
-      const lines = tools.map((tool) => `- ${tool.name}: ${tool.description || "No description"}`);
+      const lines = tools.map(
+        (tool) => `- ${tool.name}: ${tool.description || "No description"}`
+      );
       return {
         text: t(locale, "mcpTools", { server: serverName, lines })
       };
@@ -132,7 +146,9 @@ export class McpSkill {
         try {
           args = JSON.parse(jsonPart);
         } catch (error) {
-          return { text: t(locale, "mcpJsonParseFailed", { error: error.message }) };
+          return {
+            text: t(locale, "mcpJsonParseFailed", { error: error.message })
+          };
         }
       }
 

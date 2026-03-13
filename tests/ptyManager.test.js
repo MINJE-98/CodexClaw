@@ -8,10 +8,9 @@ import { PtyManager } from "../src/runner/ptyManager.js";
 function createManager(overrides = {}) {
   const runnerCwd = overrides.runnerCwd || process.cwd();
   const workspaceRoot = overrides.workspaceRoot || runnerCwd;
-  const telegram =
-    overrides.telegram || {
-      sendMessage: async () => ({})
-    };
+  const telegram = overrides.telegram || {
+    sendMessage: async () => ({})
+  };
   return new PtyManager({
     bot: {
       telegram
@@ -154,7 +153,9 @@ test("pty manager tracks recent projects and can switch back to the previous wor
 });
 
 test("pty manager keeps project conversation slots isolated per workdir", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "claws-project-sessions-"));
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "claws-project-sessions-")
+  );
   const projectA = path.join(root, "project-a");
   const projectB = path.join(root, "project-b");
   fs.mkdirSync(projectA, { recursive: true });
@@ -167,14 +168,22 @@ test("pty manager keeps project conversation slots isolated per workdir", () => 
     runnerCwd: projectA
   });
 
-  manager.getProjectState(55, projectA).lastSessionId = "11111111-1111-1111-1111-111111111111";
+  manager.getProjectState(55, projectA).lastSessionId =
+    "11111111-1111-1111-1111-111111111111";
   manager.switchWorkdir(55, "project-b");
-  manager.getProjectState(55, projectB).lastSessionId = "22222222-2222-2222-2222-222222222222";
+  manager.getProjectState(55, projectB).lastSessionId =
+    "22222222-2222-2222-2222-222222222222";
 
-  assert.equal(manager.getStatus(55).projectSessionId, "22222222-2222-2222-2222-222222222222");
+  assert.equal(
+    manager.getStatus(55).projectSessionId,
+    "22222222-2222-2222-2222-222222222222"
+  );
 
   manager.switchWorkdir(55, "project-a");
-  assert.equal(manager.getStatus(55).projectSessionId, "11111111-1111-1111-1111-111111111111");
+  assert.equal(
+    manager.getStatus(55).projectSessionId,
+    "11111111-1111-1111-1111-111111111111"
+  );
 });
 
 test("pty manager exports and restores per-project conversation state", () => {
@@ -190,9 +199,11 @@ test("pty manager exports and restores per-project conversation state", () => {
     workspaceRoot: root,
     runnerCwd: projectA
   });
-  manager.getProjectState(99, projectA).lastSessionId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+  manager.getProjectState(99, projectA).lastSessionId =
+    "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
   manager.switchWorkdir(99, "project-b");
-  manager.getProjectState(99, projectB).lastSessionId = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+  manager.getProjectState(99, projectB).lastSessionId =
+    "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 
   const restored = createManager({
     workspaceRoot: root,
@@ -201,9 +212,15 @@ test("pty manager exports and restores per-project conversation state", () => {
   restored.restoreState(manager.exportState());
 
   assert.equal(restored.getStatus(99).relativeWorkdir, "project-b");
-  assert.equal(restored.getStatus(99).projectSessionId, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+  assert.equal(
+    restored.getStatus(99).projectSessionId,
+    "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+  );
   restored.switchWorkdir(99, "project-a");
-  assert.equal(restored.getStatus(99).projectSessionId, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+  assert.equal(
+    restored.getStatus(99).projectSessionId,
+    "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  );
 });
 
 test("pty manager exports and restores verbose preference", () => {
@@ -271,5 +288,5 @@ test("pty manager shows exec fallback notices when verbose output is on", async 
   await manager.sendPrompt({ chat: { id: 77 } }, "who are u");
 
   assert.equal(sentMessages.length, 1);
-  assert.match(sentMessages[0].text, /PTY unavailable/);
+  assert.match(sentMessages[0].text, /Interactive terminal is unavailable/);
 });

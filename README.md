@@ -73,12 +73,29 @@ Development mode:
 npm run dev
 ```
 
-Sanity check:
+Validation:
 
 ```bash
 npm run check
+npm run lint
+npm run format:check
 npm test
+npm run healthcheck
 ```
+
+## Development Commands
+
+- `npm run start` - start the bot
+- `npm run dev` - watch mode for local development
+- `npm run check` - syntax validation
+- `npm run lint` - ESLint for source, tests, scripts, and local JS/CJS config files
+- `npm run lint:fix` - apply safe lint fixes
+- `npm run format` - format repository files with Prettier
+- `npm run format:check` - verify formatting
+- `npm test` - run the full test suite
+- `npm run healthcheck` - static runtime readiness check
+- `npm run healthcheck:strict` - stricter production-oriented health check
+- `npm run telegram:smoke` - live Telegram API smoke test when a real bot token is available
 
 ## Architecture
 
@@ -113,6 +130,31 @@ This prevents:
 - duplicate queries against the same MCP server
 - extra latency/token/tool cost
 - context drift from two independent MCP execution surfaces
+
+## Subagents
+
+In this repository, "subagent" means a dedicated skill executor behind the router, not a second free-form Codex session.
+
+Current subagents:
+
+- `github` skill - local git actions, repo creation through GitHub API, and test job tracking
+- `mcp` skill - explicit MCP server inspection, enable/disable, tool listing, and tool calls
+
+How they are triggered:
+
+- Explicit commands always go straight to the matching subagent:
+  - `/gh ...` -> GitHub skill
+  - `/mcp ...` -> MCP skill
+- Plain text may also route to a subagent when the router sees a supported GitHub-style request such as `git push`, `commit`, or `run test`
+- Everything else falls back to Codex CLI
+
+Where this happens:
+
+- Router decision order: [router.js](/Users/ding/Documents/Code/Github/codex-telegram-claws/src/orchestrator/router.js)
+- Skill toggles per chat: [skillRegistry.js](/Users/ding/Documents/Code/Github/codex-telegram-claws/src/orchestrator/skillRegistry.js)
+- Telegram command entrypoints: [handlers.js](/Users/ding/Documents/Code/Github/codex-telegram-claws/src/bot/handlers.js)
+
+Operationally, subagents are the bot's control plane. Codex remains the coding execution plane.
 
 ## Commands
 
@@ -192,6 +234,7 @@ PTY output is streamed with throttled `editMessageText` updates.
   - quote block (if `REASONING_RENDER_MODE=quote`)
 - If `node-pty` cannot spawn on the current host, the runner falls back to `codex exec` for per-request execution
 - In `codex exec` fallback mode, Telegram output is cleaned to hide the Codex banner, raw tool trace, `mcp startup`, and duplicate `tokens used` footer
+- On macOS, startup now auto-repairs `node-pty` helper execute permissions before the first PTY session
 
 ## Project-Scoped Conversation State
 
@@ -262,6 +305,33 @@ GITHUB_DEFAULT_BRANCH=main
 E2E_TEST_COMMAND=npx playwright test --reporter=line
 ```
 
+## CI And Release Automation
+
+GitHub Actions now includes:
+
+- `CI` workflow on push and pull request
+- `Telegram Smoke` manual workflow for live bot-token validation when repository secrets are configured
+- `Release` workflow on `v*` tags, which reruns validation and publishes a GitHub Release
+
+Repository secrets for live smoke checks:
+
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_EXPECTED_USERNAME` (optional)
+- `TELEGRAM_SMOKE_CHAT_ID` (optional)
+
+Recommended local release gate:
+
+```bash
+npm run ci
+node scripts/healthcheck.js --strict --telegram-live
+```
+
+Release references:
+
+- [operations.md](/Users/ding/Documents/Code/Github/codex-telegram-claws/docs/operations.md)
+- [release.md](/Users/ding/Documents/Code/Github/codex-telegram-claws/docs/release.md)
+- [ecosystem.config.cjs](/Users/ding/Documents/Code/Github/codex-telegram-claws/ecosystem.config.cjs)
+
 ## Security Baseline
 
 - Whitelist-only access (`ALLOWED_USER_IDS`) is mandatory
@@ -274,6 +344,21 @@ E2E_TEST_COMMAND=npx playwright test --reporter=line
 - Keep `SHELL_READ_ONLY=true` unless you have a strong reason to allow write commands
 - If you allow write commands, mark high-risk prefixes in `SHELL_DANGEROUS_COMMANDS` and require `/sh --confirm ...`
 - Prefer least-privilege GitHub PAT
+
+## Operations
+
+The recommended production supervisor is PM2.
+
+Basic flow:
+
+```bash
+pm2 start ecosystem.config.cjs
+pm2 status codex-telegram-claws
+pm2 logs codex-telegram-claws
+pm2 restart codex-telegram-claws
+```
+
+Run exactly one polling process per bot token.
 
 ## Should You Enable `/sh`?
 
@@ -305,7 +390,7 @@ Telegram can manage runtime usage of Bot-side MCP and skills, but not install ar
 - **MCP failures**: run `/mcp tools <server>` first to validate server availability
 - **GitHub API failures**: verify `GITHUB_TOKEN` scope (`repo`) and account permissions
 - **Duplicate MCP suspicion**: ensure coding tasks are routed directly to Codex, and bot MCP is used only for `/mcp`
-- **`posix_spawnp failed`**: this means PTY spawn is blocked on the host; the runner will fall back to `codex exec`
+- **`posix_spawnp failed`**: this usually means the `node-pty` helper lost execute permissions; startup now auto-repairs it, and `npm run healthcheck` reports the result
 
 ## Reference
 

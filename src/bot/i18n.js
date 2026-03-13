@@ -64,14 +64,24 @@ const MESSAGES = {
       "/gh ... - GitHub skill",
       "/mcp ... - MCP control and explicit tool calls"
     ],
-    statusLines: ({ status, recentProjects, shellSummary, skillsSummary, mcpSummary }) => [
+    statusLines: ({
+      status,
+      recentProjects,
+      shellSummary,
+      skillsSummary,
+      mcpSummary
+    }) => [
       "Status:",
       `active: ${status.active ? "yes" : "no"}`,
       `active mode: ${status.activeMode || "idle"}`,
       `last mode: ${status.lastMode || "none"}`,
       `last exit: ${status.lastExitCode === null ? "n/a" : status.lastExitCode}`,
       `pty supported: ${
-        status.ptySupported === null ? "unknown" : status.ptySupported ? "yes" : "no (exec fallback)"
+        status.ptySupported === null
+          ? "unknown"
+          : status.ptySupported
+            ? "yes"
+            : "no (exec fallback)"
       }`,
       `preferred model: ${status.preferredModel || "inherit codex default"}`,
       `language: ${status.language} (${languageLabel(status.language, "en")})`,
@@ -95,7 +105,9 @@ const MESSAGES = {
       joinLines([
         `workspace root: ${workspaceRoot}`,
         "Available projects:",
-        ...(projectLines.length ? projectLines : ["- (no git repositories found under the workspace root)"]),
+        ...(projectLines.length
+          ? projectLines
+          : ["- (no git repositories found under the workspace root)"]),
         "",
         "Recent projects:",
         ...(recentLines.length ? recentLines : ["- ."]),
@@ -150,7 +162,8 @@ const MESSAGES = {
       closed
         ? "The current project's conversation was cleared and the active session was closed. The next message will start a fresh Codex conversation in this project."
         : "The current project's conversation was cleared. The next message will start a fresh Codex conversation in this project.",
-    restartUnavailable: "Bot restart control is not enabled in this environment.",
+    restartUnavailable:
+      "Bot restart control is not enabled in this environment.",
     restarting: "Restarting the bot process...",
     usageExec: "Usage: /exec <task>",
     usageSh: "Usage: /sh <command>",
@@ -189,7 +202,8 @@ const MESSAGES = {
         "output:",
         result.output
       ]),
-    modelCurrent: ({ model }) => `Current model: ${model || "inherit codex default"}`,
+    modelCurrent: ({ model }) =>
+      `Current model: ${model || "inherit codex default"}`,
     modelReset: ({ closed }) =>
       closed
         ? "Model reset to the Codex default and the current session was rebuilt."
@@ -198,26 +212,35 @@ const MESSAGES = {
       closed
         ? `Model set to ${value} and the current session was rebuilt.`
         : `Model set to ${value}.`,
-    verboseCurrent: ({ enabled }) => `System notices: ${enabled ? "on" : "off"}`,
-    verboseSet: ({ enabled }) => `System notices ${enabled ? "enabled" : "disabled"}.`,
+    verboseCurrent: ({ enabled }) =>
+      `System notices: ${enabled ? "on" : "off"}`,
+    verboseSet: ({ enabled }) =>
+      `System notices ${enabled ? "enabled" : "disabled"}.`,
     languageCurrent: ({ language }) =>
       `Current language: ${language} (${languageLabel(language, "en")})`,
     languageSet: ({ language }) =>
       `Language set to ${language} (${languageLabel(language, "en")}).`,
     languageInvalid: "Supported languages: en, zh, zh-HK.",
     interruptResult: ({ ok }) =>
-      ok ? "Sent Ctrl+C to the active Codex session." : "There is no active PTY session for this chat.",
+      ok
+        ? "Sent Ctrl+C to the active Codex session."
+        : "There is no active PTY session for this chat.",
     stopResult: ({ ok }) =>
-      ok ? "The PTY session was terminated." : "There is no active PTY session for this chat.",
+      ok
+        ? "The PTY session was terminated."
+        : "There is no active PTY session for this chat.",
     cronTriggered: "The daily summary was triggered and sent.",
     triggerFailed: ({ error }) => `Trigger failed: ${error}`,
-    githubDisabled: "GitHub skill is disabled for this chat. Use /skill on github to enable it again.",
+    githubDisabled:
+      "GitHub skill is disabled for this chat. Use /skill on github to enable it again.",
     githubFailed: ({ error }) => `GitHub skill failed: ${error}`,
-    mcpDisabled: "MCP skill is disabled for this chat. Use /skill on mcp to enable it again.",
+    mcpDisabled:
+      "MCP skill is disabled for this chat. Use /skill on mcp to enable it again.",
     mcpFailed: ({ error }) => `MCP skill failed: ${error}`,
     callbackRefreshed: "Status refreshed",
     testJobNotFound: ({ jobId }) => `Test job not found: ${jobId}`,
-    useRestartCommand: "Use /restart instead of sending that as a plain message.",
+    useRestartCommand:
+      "Use /restart instead of sending that as a plain message.",
     slashSpaceError: ({ fixed }) =>
       joinLines([
         "Invalid command format: do not put spaces after `/`.",
@@ -227,19 +250,21 @@ const MESSAGES = {
     processingFailed: ({ error }) => `Message handling failed: ${error}`,
     projectNameRequired: "Project name is required.",
     targetOutsideWorkspaceRoot: "Target path is outside WORKSPACE_ROOT.",
-    projectDirDoesNotExist: ({ path }) => `Project directory does not exist: ${path}`,
-    targetNotGitRepository: ({ path }) => `Target is not a git repository: ${path}`,
+    projectDirDoesNotExist: ({ path }) =>
+      `Project directory does not exist: ${path}`,
+    targetNotGitRepository: ({ path }) =>
+      `Target is not a git repository: ${path}`,
     noPreviousProject: "There is no previous project for this chat.",
     codexSessionExited: ({ mode, exitCode, signal }) =>
       `Codex session exited (mode=${mode}, code=${exitCode}, signal=${signal}).`,
     codexExecFailed: ({ error }) => `Codex exec failed: ${error}`,
     execFallbackResume:
-      "PTY unavailable on this host. Restoring the current project's Codex conversation in `codex exec resume` mode.",
+      "Interactive terminal is unavailable here. Using fallback mode and resuming this project's context.",
     execFallbackSingle:
-      "PTY unavailable on this host. Falling back to `codex exec` mode for this request.",
+      "Interactive terminal is unavailable here. Using fallback mode for this request.",
     sessionRestored: ({ project, mode }) =>
-      `Codex session restored for project ${project} (${mode}). Streaming output...`,
-    sessionStarted: ({ mode }) => `Codex session started (${mode}). Streaming output...`,
+      `Resumed Codex for ${project} (${mode}).`,
+    sessionStarted: ({ mode }) => `Started Codex (${mode}).`,
     mcpServerNotConfigured:
       "No MCP servers are configured. Add server definitions to MCP_SERVERS in .env first.",
     mcpExplicitOnly:
@@ -295,7 +320,8 @@ const MESSAGES = {
     mcpNoTools: ({ server }) => `${server} has no available tools.`,
     mcpTools: ({ server, lines }) => joinLines([`${server} tools:`, ...lines]),
     mcpUsageCall: "Usage: /mcp call <server> <tool> <jsonArgs>",
-    mcpJsonParseFailed: ({ error }) => `Failed to parse JSON arguments: ${error}`,
+    mcpJsonParseFailed: ({ error }) =>
+      `Failed to parse JSON arguments: ${error}`,
     mcpUnknownSubcommand: ({ subcommand, suggested, supported }) =>
       suggested
         ? `Unknown MCP subcommand: ${subcommand}. Did you mean \`/mcp ${suggested}\`?`
@@ -331,7 +357,8 @@ const MESSAGES = {
         `workdir: ${workdir}`,
         `branch: ${branch}`
       ]),
-    githubMissingToken: "GITHUB_TOKEN is missing, so the GitHub API cannot create a repository.",
+    githubMissingToken:
+      "GITHUB_TOKEN is missing, so the GitHub API cannot create a repository.",
     githubRepoNameParseFailed:
       "Could not parse a repository name. Example: /gh create repo codex-telegram-claws-demo",
     githubRepoCreated: ({ workdir, repo, url, branch }) =>
@@ -342,7 +369,8 @@ const MESSAGES = {
         `url: ${url}`,
         `branch: ${branch}`
       ]),
-    githubEmptyTestCommand: "E2E_TEST_COMMAND is empty, so no test job can be started.",
+    githubEmptyTestCommand:
+      "E2E_TEST_COMMAND is empty, so no test job can be started.",
     githubTestsStarted: ({ jobId, workdir, command }) =>
       joinLines([
         "Automated test job started.",
@@ -351,7 +379,8 @@ const MESSAGES = {
         `command: ${command}`,
         "Use /gh test status <jobId> to query the result."
       ]),
-    githubNoTestJobs: "No test jobs are available yet. Run /gh run tests first.",
+    githubNoTestJobs:
+      "No test jobs are available yet. Run /gh run tests first.",
     githubTestJobNotFound: ({ jobId }) => `Test job not found: ${jobId}`,
     githubTestStatus: ({ job }) =>
       joinLines([
@@ -359,18 +388,25 @@ const MESSAGES = {
         `status: ${job.status}`,
         `workdir: ${job.workdir}`,
         `startedAt: ${job.startedAt}`,
-        job.finishedAt ? `finishedAt: ${job.finishedAt}` : "finishedAt: running",
-        job.exitCode === null ? "exitCode: running" : `exitCode: ${job.exitCode}`,
+        job.finishedAt
+          ? `finishedAt: ${job.finishedAt}`
+          : "finishedAt: running",
+        job.exitCode === null
+          ? "exitCode: running"
+          : `exitCode: ${job.exitCode}`,
         "",
         "output tail:",
         job.output || "(no output yet)"
       ]),
-    shellDisabled: "Restricted shell is not enabled. Set SHELL_ENABLED=true in .env first.",
+    shellDisabled:
+      "Restricted shell is not enabled. Set SHELL_ENABLED=true in .env first.",
     shellForbiddenSyntax:
       "Pipes, redirection, command substitution, and multi-command shell syntax are not supported.",
     shellCannotParse: "Failed to parse the command.",
-    shellNotAllowlisted: ({ allowed }) => `Command is not allowlisted. Allowed prefixes: ${allowed}`,
-    shellReadonly: "The /sh channel is currently read-only. Write commands are blocked.",
+    shellNotAllowlisted: ({ allowed }) =>
+      `Command is not allowlisted. Allowed prefixes: ${allowed}`,
+    shellReadonly:
+      "The /sh channel is currently read-only. Write commands are blocked.",
     shellNeedsConfirmation: ({ command }) =>
       `This command requires confirmation. Send: ${command}`
   },
@@ -414,14 +450,24 @@ const MESSAGES = {
       "/gh ... - GitHub skill",
       "/mcp ... - MCP 控制与显式工具调用"
     ],
-    statusLines: ({ status, recentProjects, shellSummary, skillsSummary, mcpSummary }) => [
+    statusLines: ({
+      status,
+      recentProjects,
+      shellSummary,
+      skillsSummary,
+      mcpSummary
+    }) => [
       "状态:",
       `active: ${status.active ? "yes" : "no"}`,
       `active mode: ${status.activeMode || "idle"}`,
       `last mode: ${status.lastMode || "none"}`,
       `last exit: ${status.lastExitCode === null ? "n/a" : status.lastExitCode}`,
       `pty supported: ${
-        status.ptySupported === null ? "unknown" : status.ptySupported ? "yes" : "no (exec fallback)"
+        status.ptySupported === null
+          ? "unknown"
+          : status.ptySupported
+            ? "yes"
+            : "no (exec fallback)"
       }`,
       `preferred model: ${status.preferredModel || "inherit codex default"}`,
       `language: ${status.language} (${languageLabel(status.language, "zh")})`,
@@ -445,7 +491,9 @@ const MESSAGES = {
       joinLines([
         `workspace root: ${workspaceRoot}`,
         "可用项目:",
-        ...(projectLines.length ? projectLines : ["- (workspace root 下未发现 git 仓库)"]),
+        ...(projectLines.length
+          ? projectLines
+          : ["- (workspace root 下未发现 git 仓库)"]),
         "",
         "最近项目:",
         ...(recentLines.length ? recentLines : ["- ."]),
@@ -513,7 +561,8 @@ const MESSAGES = {
     planNotice: "正在执行仅规划模式的 Codex 任务...",
     taskBusy: ({ mode }) =>
       `当前已有 ${mode || "unknown"} 任务在运行。请等待完成或先使用 /interrupt。`,
-    codexBusyForShell: "当前有 Codex 任务正在运行。先等待完成，或使用 /interrupt 或 /new。",
+    codexBusyForShell:
+      "当前有 Codex 任务正在运行。先等待完成，或使用 /interrupt 或 /new。",
     shellRequiresConfirmation: ({ command, confirmationCommand }) =>
       joinLines([
         "该命令被标记为高风险，需要二次确认。",
@@ -538,22 +587,32 @@ const MESSAGES = {
         "output:",
         result.output
       ]),
-    modelCurrent: ({ model }) => `当前模型: ${model || "inherit codex default"}`,
+    modelCurrent: ({ model }) =>
+      `当前模型: ${model || "inherit codex default"}`,
     modelReset: ({ closed }) =>
-      closed ? "模型已重置为 Codex 默认值，并重建了当前会话。" : "模型已重置为 Codex 默认值。",
+      closed
+        ? "模型已重置为 Codex 默认值，并重建了当前会话。"
+        : "模型已重置为 Codex 默认值。",
     modelSet: ({ value, closed }) =>
-      closed ? `模型已设置为 ${value}，并重建了当前会话。` : `模型已设置为 ${value}。`,
-    verboseCurrent: ({ enabled }) => `当前系统提示输出: ${enabled ? "on" : "off"}`,
+      closed
+        ? `模型已设置为 ${value}，并重建了当前会话。`
+        : `模型已设置为 ${value}。`,
+    verboseCurrent: ({ enabled }) =>
+      `当前系统提示输出: ${enabled ? "on" : "off"}`,
     verboseSet: ({ enabled }) => `系统提示输出已${enabled ? "开启" : "关闭"}。`,
     languageCurrent: ({ language }) =>
       `当前语言: ${language} (${languageLabel(language, "zh")})`,
-    languageSet: ({ language }) => `语言已切换为 ${language} (${languageLabel(language, "zh")})。`,
+    languageSet: ({ language }) =>
+      `语言已切换为 ${language} (${languageLabel(language, "zh")})。`,
     languageInvalid: "支持的语言: en, zh, zh-HK。",
-    interruptResult: ({ ok }) => (ok ? "已发送 Ctrl+C。" : "当前 chat 没有活动 PTY 会话。"),
-    stopResult: ({ ok }) => (ok ? "PTY 会话已终止。" : "当前 chat 没有活动 PTY 会话。"),
+    interruptResult: ({ ok }) =>
+      ok ? "已发送 Ctrl+C。" : "当前 chat 没有活动 PTY 会话。",
+    stopResult: ({ ok }) =>
+      ok ? "PTY 会话已终止。" : "当前 chat 没有活动 PTY 会话。",
     cronTriggered: "日报已触发并推送。",
     triggerFailed: ({ error }) => `触发失败: ${error}`,
-    githubDisabled: "GitHub skill 当前 chat 已禁用。使用 /skill on github 重新启用。",
+    githubDisabled:
+      "GitHub skill 当前 chat 已禁用。使用 /skill on github 重新启用。",
     githubFailed: ({ error }) => `GitHub skill 执行失败: ${error}`,
     mcpDisabled: "MCP skill 当前 chat 已禁用。使用 /skill on mcp 重新启用。",
     mcpFailed: ({ error }) => `MCP skill 执行失败: ${error}`,
@@ -561,10 +620,7 @@ const MESSAGES = {
     testJobNotFound: ({ jobId }) => `找不到测试任务: ${jobId}`,
     useRestartCommand: "请使用 /restart，而不是把它当作普通消息发送。",
     slashSpaceError: ({ fixed }) =>
-      joinLines([
-        "命令格式错误：`/` 后面不要加空格。",
-        `try: ${fixed}`
-      ]),
+      joinLines(["命令格式错误：`/` 后面不要加空格。", `try: ${fixed}`]),
     skillNotFound: ({ name }) => `未找到 skill: ${name}`,
     processingFailed: ({ error }) => `处理消息失败: ${error}`,
     projectNameRequired: "项目名不能为空。",
@@ -576,13 +632,13 @@ const MESSAGES = {
       `Codex session exited (mode=${mode}, code=${exitCode}, signal=${signal}).`,
     codexExecFailed: ({ error }) => `Codex exec 执行失败: ${error}`,
     execFallbackResume:
-      "当前宿主机不支持 PTY，已改为使用 `codex exec resume` 恢复当前项目会话。",
-    execFallbackSingle:
-      "当前宿主机不支持 PTY，本次请求已改为 `codex exec` 模式。",
+      "当前环境不支持交互终端，已切到回退模式并恢复当前项目上下文。",
+    execFallbackSingle: "当前环境不支持交互终端，本次请求已切到回退模式。",
     sessionRestored: ({ project, mode }) =>
-      `已恢复项目 ${project} 的 Codex 会话 (${mode})，正在流式输出...`,
-    sessionStarted: ({ mode }) => `Codex 会话已启动 (${mode})，正在流式输出...`,
-    mcpServerNotConfigured: "MCP server 未配置。请先在 .env 的 MCP_SERVERS 中添加服务定义。",
+      `已恢复 ${project} 的 Codex 会话 (${mode})。`,
+    sessionStarted: ({ mode }) => `Codex 会话已启动 (${mode})。`,
+    mcpServerNotConfigured:
+      "MCP server 未配置。请先在 .env 的 MCP_SERVERS 中添加服务定义。",
     mcpExplicitOnly:
       "当前仅支持显式 MCP 命令。请使用 /mcp tools <server> 或 /mcp call <server> <tool> <jsonArgs>。",
     mcpHelp: () =>
@@ -667,13 +723,10 @@ const MESSAGES = {
         `error: ${error}`
       ]),
     githubPushSucceeded: ({ workdir, branch }) =>
-      joinLines([
-        "推送成功。",
-        `workdir: ${workdir}`,
-        `branch: ${branch}`
-      ]),
+      joinLines(["推送成功。", `workdir: ${workdir}`, `branch: ${branch}`]),
     githubMissingToken: "缺少 GITHUB_TOKEN，无法调用 GitHub API 创建仓库。",
-    githubRepoNameParseFailed: "无法解析仓库名。示例: /gh create repo codex-telegram-claws-demo",
+    githubRepoNameParseFailed:
+      "无法解析仓库名。示例: /gh create repo codex-telegram-claws-demo",
     githubRepoCreated: ({ workdir, repo, url, branch }) =>
       joinLines([
         "仓库创建并关联成功。",
@@ -699,18 +752,25 @@ const MESSAGES = {
         `status: ${job.status}`,
         `workdir: ${job.workdir}`,
         `startedAt: ${job.startedAt}`,
-        job.finishedAt ? `finishedAt: ${job.finishedAt}` : "finishedAt: running",
-        job.exitCode === null ? "exitCode: running" : `exitCode: ${job.exitCode}`,
+        job.finishedAt
+          ? `finishedAt: ${job.finishedAt}`
+          : "finishedAt: running",
+        job.exitCode === null
+          ? "exitCode: running"
+          : `exitCode: ${job.exitCode}`,
         "",
         "output tail:",
         job.output || "(no output yet)"
       ]),
-    shellDisabled: "受限 Shell 功能未启用。先在 .env 中设置 SHELL_ENABLED=true。",
+    shellDisabled:
+      "受限 Shell 功能未启用。先在 .env 中设置 SHELL_ENABLED=true。",
     shellForbiddenSyntax: "不支持管道、重定向、命令替换或多条 shell 语句。",
     shellCannotParse: "无法解析命令。",
-    shellNotAllowlisted: ({ allowed }) => `命令不在白名单中。允许前缀: ${allowed}`,
+    shellNotAllowlisted: ({ allowed }) =>
+      `命令不在白名单中。允许前缀: ${allowed}`,
     shellReadonly: "当前 /sh 处于只读模式，禁止执行写操作命令。",
-    shellNeedsConfirmation: ({ command }) => `该命令需要二次确认。请发送: ${command}`
+    shellNeedsConfirmation: ({ command }) =>
+      `该命令需要二次确认。请发送: ${command}`
   },
   "zh-HK": {}
 };

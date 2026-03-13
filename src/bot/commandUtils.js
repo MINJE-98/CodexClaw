@@ -6,7 +6,9 @@ export function extractCommandPayload(rawText = "", commandName) {
 function levenshteinDistance(a, b) {
   const left = String(a);
   const right = String(b);
-  const dp = Array.from({ length: left.length + 1 }, () => new Array(right.length + 1).fill(0));
+  const dp = Array.from({ length: left.length + 1 }, () =>
+    new Array(right.length + 1).fill(0)
+  );
 
   for (let i = 0; i <= left.length; i += 1) dp[i][0] = i;
   for (let j = 0; j <= right.length; j += 1) dp[0][j] = j;
@@ -26,14 +28,18 @@ function levenshteinDistance(a, b) {
 }
 
 export function suggestClosestWord(input, candidates, maxDistance = 2) {
-  const normalizedInput = String(input || "").trim().toLowerCase();
+  const normalizedInput = String(input || "")
+    .trim()
+    .toLowerCase();
   if (!normalizedInput) return "";
 
   let best = "";
   let bestDistance = Number.POSITIVE_INFINITY;
 
   for (const candidate of candidates) {
-    const normalizedCandidate = String(candidate || "").trim().toLowerCase();
+    const normalizedCandidate = String(candidate || "")
+      .trim()
+      .toLowerCase();
     if (!normalizedCandidate) continue;
 
     const distance = levenshteinDistance(normalizedInput, normalizedCandidate);

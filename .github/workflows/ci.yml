@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20, 22]
+    env:
+      BOT_TOKEN: "ci-bot-token"
+      ALLOWED_USER_IDS: "1"
+      CODEX_COMMAND: "node"
+      CODEX_WORKDIR: "."
+      WORKSPACE_ROOT: "."
+      GITHUB_DEFAULT_WORKDIR: "."
+      STATE_FILE: ".codex-telegram-claws-state.json"
+      MCP_SERVERS: "[]"
+      SHELL_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - run: npm ci
+      - run: npm run check
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm test
+      - run: npm run healthcheck

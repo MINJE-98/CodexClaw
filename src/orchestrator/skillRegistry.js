@@ -6,7 +6,9 @@ export class SkillRegistry {
   }
 
   normalizeSkillName(name) {
-    return String(name || "").trim().toLowerCase();
+    return String(name || "")
+      .trim()
+      .toLowerCase();
   }
 
   ensureKnownSkill(name) {

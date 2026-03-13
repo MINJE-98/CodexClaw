@@ -11,8 +11,15 @@ function createShellManager(overrides = {}) {
       shell: {
         enabled: overrides.enabled ?? true,
         readOnly: overrides.readOnly ?? true,
-        allowedCommands: overrides.allowedCommands ?? ["pwd", "git status", "npm test"],
-        dangerousCommands: overrides.dangerousCommands ?? ["git push", "git commit"],
+        allowedCommands: overrides.allowedCommands ?? [
+          "pwd",
+          "git status",
+          "npm test"
+        ],
+        dangerousCommands: overrides.dangerousCommands ?? [
+          "git push",
+          "git commit"
+        ],
         timeoutMs: overrides.timeoutMs ?? 5000,
         maxOutputChars: overrides.maxOutputChars ?? 4000
       }
@@ -36,7 +43,10 @@ test("shell manager rejects shell metacharacters and commands outside the allowl
     () => manager.validateCommand("git status && pwd"),
     /Pipes, redirection, command substitution/
   );
-  assert.throws(() => manager.validateCommand("rm -rf ."), /Command is not allowlisted/);
+  assert.throws(
+    () => manager.validateCommand("rm -rf ."),
+    /Command is not allowlisted/
+  );
 });
 
 test("shell manager marks dangerous commands for confirmation when writable", () => {
@@ -58,7 +68,10 @@ test("shell manager blocks dangerous commands in read-only mode", () => {
     allowedCommands: ["git push", "git status"]
   });
 
-  assert.throws(() => manager.inspectCommand("git push"), /currently read-only/);
+  assert.throws(
+    () => manager.inspectCommand("git push"),
+    /currently read-only/
+  );
 });
 
 test("shell manager allows confirmed dangerous commands when writable", () => {
@@ -88,7 +101,10 @@ test("shell manager executes an allowed command without invoking a shell", async
   assert.equal(result.started, true);
   assert.equal(result.status, "passed");
   assert.equal(result.workdir, workdir);
-  assert.match(result.output, new RegExp(workdir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(
+    result.output,
+    new RegExp(workdir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+  );
 });
 
 test("shell manager reports disabled mode before execution", () => {
@@ -107,5 +123,8 @@ test("shell manager localizes validation errors when locale is zh", () => {
     enabled: false
   });
 
-  assert.throws(() => manager.validateCommand("pwd", { locale: "zh" }), /受限 Shell 功能未启用/);
+  assert.throws(
+    () => manager.validateCommand("pwd", { locale: "zh" }),
+    /受限 Shell 功能未启用/
+  );
 });

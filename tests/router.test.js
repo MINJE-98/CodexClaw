@@ -52,9 +52,12 @@ test("router sends coding tasks directly to codex PTY", async () => {
     }
   });
 
-  const route = await router.routeMessage("Please fix src/index.js and run tests", {
-    chatId: 1
-  });
+  const route = await router.routeMessage(
+    "Please fix src/index.js and run tests",
+    {
+      chatId: 1
+    }
+  );
 
   assert.deepEqual(route, {
     target: "pty",
@@ -104,7 +107,8 @@ test("router skips disabled skills for the current chat", async () => {
       github: createSkill(() => true),
       mcp: createSkill(() => false)
     },
-    isSkillEnabled: (chatId, skillName) => !(chatId === 9 && skillName === "github")
+    isSkillEnabled: (chatId, skillName) =>
+      !(chatId === 9 && skillName === "github")
   });
 
   const route = await router.routeMessage("push this repo", {

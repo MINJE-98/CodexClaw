@@ -7,9 +7,12 @@ import throttle from "lodash.throttle";
 import stripAnsi from "strip-ansi";
 import { formatPtyOutput, splitTelegramMessage } from "../bot/formatter.js";
 import { normalizeLanguage, t } from "../bot/i18n.js";
+import { repairNodePtySpawnHelperPermissions } from "./ptyPreflight.js";
 
 function isMessageNotModified(error) {
-  return String(error?.description || error?.message || "").includes("message is not modified");
+  return String(error?.description || error?.message || "").includes(
+    "message is not modified"
+  );
 }
 
 function isPtySpawnFailure(error) {
@@ -28,6 +31,17 @@ export class PtyManager {
     this.onChange = onChange;
     this.sessions = new Map();
     this.chatState = new Map();
+    this.ptyPreflight = repairNodePtySpawnHelperPermissions();
+
+    if (this.ptyPreflight.error) {
+      console.warn(
+        `[runner] node-pty preflight failed: ${this.ptyPreflight.error}`
+      );
+    } else if (this.ptyPreflight.changed) {
+      console.info(
+        `[runner] repaired node-pty helper permissions: ${this.ptyPreflight.path}`
+      );
+    }
   }
 
   ensureChatState(chatId) {
@@ -62,7 +76,9 @@ export class PtyManager {
   ensureProjectState(chatId, workdir = this.getWorkdir(chatId)) {
     const key = String(chatId);
     const state = this.ensureChatState(key);
-    const resolvedWorkdir = path.resolve(workdir || state.currentWorkdir || this.config.runner.cwd);
+    const resolvedWorkdir = path.resolve(
+      workdir || state.currentWorkdir || this.config.runner.cwd
+    );
     const existing = state.projectStates.get(resolvedWorkdir);
     if (existing) return existing;
 
@@ -131,7 +147,10 @@ export class PtyManager {
   }
 
   rememberWorkdir(state, workdir) {
-    const history = [workdir, ...(state.recentWorkdirs || []).filter((item) => item !== workdir)];
+    const history = [
+      workdir,
+      ...(state.recentWorkdirs || []).filter((item) => item !== workdir)
+    ];
     state.recentWorkdirs = history.slice(0, 6);
   }
 
@@ -139,7 +158,10 @@ export class PtyManager {
     const root = path.resolve(this.config.workspace.root);
     const target = path.resolve(candidate);
     const relative = path.relative(root, target);
-    return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+    return (
+      relative === "" ||
+      (!relative.startsWith("..") && !path.isAbsolute(relative))
+    );
   }
 
   listProjects() {
@@ -175,7 +197,10 @@ export class PtyManager {
   getRecentProjects(chatId) {
     const state = this.ensureChatState(chatId);
     return (state.recentWorkdirs || [])
-      .filter((workdir) => fs.existsSync(workdir) && this.isInsideWorkspaceRoot(workdir))
+      .filter(
+        (workdir) =>
+          fs.existsSync(workdir) && this.isInsideWorkspaceRoot(workdir)
+      )
       .map((workdir) => ({
         path: workdir,
         relativePath: path.relative(this.config.workspace.root, workdir) || "."
@@ -203,11 +228,15 @@ export class PtyManager {
     }
 
     if (!fs.existsSync(targetPath) || !fs.statSync(targetPath).isDirectory()) {
-      throw new Error(t(this.getLanguage(key), "projectDirDoesNotExist", { path: targetPath }));
+      throw new Error(
+        t(this.getLanguage(key), "projectDirDoesNotExist", { path: targetPath })
+      );
     }
 
     if (!fs.existsSync(path.join(targetPath, ".git"))) {
-      throw new Error(t(this.getLanguage(key), "targetNotGitRepository", { path: targetPath }));
+      throw new Error(
+        t(this.getLanguage(key), "targetNotGitRepository", { path: targetPath })
+      );
     }
 
     const state = this.ensureChatState(key);
@@ -226,7 +255,9 @@ export class PtyManager {
   switchToPreviousWorkdir(chatId) {
     const key = String(chatId);
     const state = this.ensureChatState(key);
-    const previous = (state.recentWorkdirs || []).find((workdir) => workdir !== state.currentWorkdir);
+    const previous = (state.recentWorkdirs || []).find(
+      (workdir) => workdir !== state.currentWorkdir
+    );
 
     if (!previous) {
       throw new Error(t(this.getLanguage(key), "noPreviousProject"));
@@ -274,7 +305,9 @@ export class PtyManager {
   createBaseSession(chatId, mode, options = {}) {
     const key = String(chatId);
     const state = this.ensureChatState(key);
-    const workdir = path.resolve(options.workdir || state.currentWorkdir || this.config.runner.cwd);
+    const workdir = path.resolve(
+      options.workdir || state.currentWorkdir || this.config.runner.cwd
+    );
     const projectState = this.ensureProjectState(key, workdir);
     const session = {
       chatId: key,
@@ -311,7 +344,10 @@ export class PtyManager {
     if (!sessionId || sessionId === session.sessionId) return;
 
     session.sessionId = sessionId;
-    const projectState = this.ensureProjectState(session.chatId, session.workdir);
+    const projectState = this.ensureProjectState(
+      session.chatId,
+      session.workdir
+    );
     projectState.lastSessionId = sessionId;
     this.onChange?.(this.exportState());
   }
@@ -320,7 +356,9 @@ export class PtyManager {
     stream.on("data", (chunk) => {
       session.rawBuffer += stripAnsi(String(chunk || "")).replace(/\r/g, "");
       if (session.rawBuffer.length > this.config.runner.maxBufferChars) {
-        session.rawBuffer = session.rawBuffer.slice(-this.config.runner.maxBufferChars);
+        session.rawBuffer = session.rawBuffer.slice(
+          -this.config.runner.maxBufferChars
+        );
       }
       this.captureSessionMetadata(session);
       session.throttledFlush();
@@ -330,7 +368,10 @@ export class PtyManager {
   attachExit(session, handler) {
     handler(async ({ exitCode, signal }) => {
       this.captureSessionMetadata(session);
-      const projectState = this.ensureProjectState(session.chatId, session.workdir);
+      const projectState = this.ensureProjectState(
+        session.chatId,
+        session.workdir
+      );
       projectState.lastMode = session.mode;
       projectState.lastExitCode = exitCode;
       projectState.lastExitSignal = signal;
@@ -356,16 +397,20 @@ export class PtyManager {
 
   startPtySession(chatId, options = {}) {
     const session = this.createBaseSession(chatId, "pty", options);
-    const proc = pty.spawn(this.config.runner.command, this.getInteractiveArgs(chatId, options), {
-      name: "xterm-256color",
-      cols: 120,
-      rows: 32,
-      cwd: session.workdir,
-      env: {
-        ...process.env,
-        FORCE_COLOR: "1"
+    const proc = pty.spawn(
+      this.config.runner.command,
+      this.getInteractiveArgs(chatId, options),
+      {
+        name: "xterm-256color",
+        cols: 120,
+        rows: 32,
+        cwd: session.workdir,
+        env: {
+          ...process.env,
+          FORCE_COLOR: "1"
+        }
       }
-    });
+    );
 
     this.ensureChatState(chatId).ptySupported = true;
     session.proc = proc;
@@ -376,7 +421,9 @@ export class PtyManager {
     proc.onData((chunk) => {
       session.rawBuffer += stripAnsi(String(chunk || "")).replace(/\r/g, "");
       if (session.rawBuffer.length > this.config.runner.maxBufferChars) {
-        session.rawBuffer = session.rawBuffer.slice(-this.config.runner.maxBufferChars);
+        session.rawBuffer = session.rawBuffer.slice(
+          -this.config.runner.maxBufferChars
+        );
       }
       this.captureSessionMetadata(session);
       session.throttledFlush();
@@ -388,10 +435,14 @@ export class PtyManager {
 
   startExecSessionWithOptions(chatId, prompt, options = {}) {
     const session = this.createBaseSession(chatId, "exec", options);
-    const proc = spawn(this.config.runner.command, this.getExecArgs(chatId, prompt, options), {
-      cwd: session.workdir,
-      env: process.env
-    });
+    const proc = spawn(
+      this.config.runner.command,
+      this.getExecArgs(chatId, prompt, options),
+      {
+        cwd: session.workdir,
+        env: process.env
+      }
+    );
 
     session.proc = proc;
     session.write = null;
@@ -433,7 +484,9 @@ export class PtyManager {
       }
 
       this.ensureChatState(key).ptySupported = false;
-      console.warn(`[runner] PTY spawn failed for chat ${key}; falling back to codex exec mode.`);
+      console.warn(
+        `[runner] PTY spawn failed for chat ${key}; falling back to codex exec mode.`
+      );
       return null;
     }
   }
@@ -460,7 +513,10 @@ export class PtyManager {
     if (rendered === session.lastRendered) return;
     session.lastRendered = rendered;
 
-    const chunks = splitTelegramMessage(rendered, this.config.runner.telegramChunkSize);
+    const chunks = splitTelegramMessage(
+      rendered,
+      this.config.runner.telegramChunkSize
+    );
     const existing = session.streamMessageIds;
     const nextIds = [];
 
@@ -470,10 +526,16 @@ export class PtyManager {
 
       if (existingMessageId) {
         try {
-          await this.bot.telegram.editMessageText(chatId, existingMessageId, undefined, chunk, {
-            parse_mode: "MarkdownV2",
-            disable_web_page_preview: true
-          });
+          await this.bot.telegram.editMessageText(
+            chatId,
+            existingMessageId,
+            undefined,
+            chunk,
+            {
+              parse_mode: "MarkdownV2",
+              disable_web_page_preview: true
+            }
+          );
           nextIds.push(existingMessageId);
         } catch (error) {
           if (!isMessageNotModified(error)) {
@@ -661,7 +723,9 @@ export class PtyManager {
   serializeWorkdir(workdir) {
     const relative = path.relative(this.config.workspace.root, workdir);
     if (!relative) return ".";
-    return !relative.startsWith("..") && !path.isAbsolute(relative) ? relative : workdir;
+    return !relative.startsWith("..") && !path.isAbsolute(relative)
+      ? relative
+      : workdir;
   }
 
   resolveStoredWorkdir(stored) {
@@ -700,7 +764,9 @@ export class PtyManager {
         language: this.getLanguage(chatId),
         verboseOutput: Boolean(state.verboseOutput),
         currentWorkdir: this.serializeWorkdir(state.currentWorkdir),
-        recentWorkdirs: (state.recentWorkdirs || []).map((workdir) => this.serializeWorkdir(workdir)),
+        recentWorkdirs: (state.recentWorkdirs || []).map((workdir) =>
+          this.serializeWorkdir(workdir)
+        ),
         projects
       };
     }
@@ -718,7 +784,8 @@ export class PtyManager {
 
     for (const [chatId, rawState] of Object.entries(chats)) {
       const currentWorkdir =
-        this.resolveStoredWorkdir(rawState?.currentWorkdir) || this.config.runner.cwd;
+        this.resolveStoredWorkdir(rawState?.currentWorkdir) ||
+        this.config.runner.cwd;
 
       const recentWorkdirs = Array.isArray(rawState?.recentWorkdirs)
         ? rawState.recentWorkdirs
@@ -729,7 +796,9 @@ export class PtyManager {
       const projectStates = new Map();
       const rawProjects = rawState?.projects;
       if (rawProjects && typeof rawProjects === "object") {
-        for (const [storedWorkdir, rawProjectState] of Object.entries(rawProjects)) {
+        for (const [storedWorkdir, rawProjectState] of Object.entries(
+          rawProjects
+        )) {
           const resolvedWorkdir = this.resolveStoredWorkdir(storedWorkdir);
           if (!resolvedWorkdir) continue;
 
@@ -737,7 +806,8 @@ export class PtyManager {
             lastSessionId: String(rawProjectState?.lastSessionId || "").trim(),
             lastMode: rawProjectState?.lastMode || null,
             lastExitCode:
-              rawProjectState?.lastExitCode === null || rawProjectState?.lastExitCode === undefined
+              rawProjectState?.lastExitCode === null ||
+              rawProjectState?.lastExitCode === undefined
                 ? null
                 : rawProjectState.lastExitCode,
             lastExitSignal: rawProjectState?.lastExitSignal || null
@@ -759,7 +829,10 @@ export class PtyManager {
         language: normalizeLanguage(rawState?.language) || "en",
         verboseOutput: Boolean(rawState?.verboseOutput),
         currentWorkdir,
-        recentWorkdirs: [currentWorkdir, ...recentWorkdirs.filter((workdir) => workdir !== currentWorkdir)].slice(0, 6),
+        recentWorkdirs: [
+          currentWorkdir,
+          ...recentWorkdirs.filter((workdir) => workdir !== currentWorkdir)
+        ].slice(0, 6),
         ptySupported: null,
         projectStates
       });

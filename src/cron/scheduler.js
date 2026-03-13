@@ -43,10 +43,14 @@ export class Scheduler {
   async triggerDailySummaryNow(targetUserId) {
     const report = await this.buildDailySummary();
     if (targetUserId) {
-      await this.bot.telegram.sendMessage(String(targetUserId), escapeMarkdownV2(report), {
-        parse_mode: "MarkdownV2",
-        disable_web_page_preview: true
-      });
+      await this.bot.telegram.sendMessage(
+        String(targetUserId),
+        escapeMarkdownV2(report),
+        {
+          parse_mode: "MarkdownV2",
+          disable_web_page_preview: true
+        }
+      );
       return;
     }
 
@@ -65,7 +69,11 @@ export class Scheduler {
 
   async buildDailySummary() {
     const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate()
+    );
     const startOfYesterday = new Date(startOfToday);
     startOfYesterday.setDate(startOfYesterday.getDate() - 1);
 
@@ -79,9 +87,15 @@ export class Scheduler {
     let deletions = 0;
 
     try {
-      const logs = await this.git.log({ "--since": since, "--until": until, maxCount: 20 });
+      const logs = await this.git.log({
+        "--since": since,
+        "--until": until,
+        maxCount: 20
+      });
       commitCount = logs.total;
-      commitLines = logs.all.slice(0, 8).map((entry) => `- ${entry.hash.slice(0, 7)} ${entry.message}`);
+      commitLines = logs.all
+        .slice(0, 8)
+        .map((entry) => `- ${entry.hash.slice(0, 7)} ${entry.message}`);
     } catch (error) {
       commitLines = [`- git log error: ${error.message}`];
     }

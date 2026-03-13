@@ -78,7 +78,8 @@ skillRegistry.restoreState(runtimeState.skills);
 
 const router = new Router({
   skills,
-  isSkillEnabled: (chatId, skillName) => skillRegistry.isEnabled(chatId, skillName)
+  isSkillEnabled: (chatId, skillName) =>
+    skillRegistry.isEnabled(chatId, skillName)
 });
 
 ptyManager = new PtyManager({

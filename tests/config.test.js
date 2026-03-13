@@ -66,7 +66,10 @@ function withMutedWarnings(fn) {
 }
 
 test("loadConfig parses env values into runtime config", () => {
-  const stateFile = path.join(os.tmpdir(), "codex-telegram-claws-runtime-state.json");
+  const stateFile = path.join(
+    os.tmpdir(),
+    "codex-telegram-claws-runtime-state.json"
+  );
   const config = withEnv(
     {
       BOT_TOKEN: "telegram-token",
@@ -74,7 +77,7 @@ test("loadConfig parses env values into runtime config", () => {
       PROACTIVE_USER_IDS: "2",
       STATE_FILE: stateFile,
       CODEX_COMMAND: "codex",
-      CODEX_ARGS: "--approval-mode auto \"--model gpt-5\"",
+      CODEX_ARGS: '--approval-mode auto "--model gpt-5"',
       CODEX_WORKDIR: ".",
       WORKSPACE_ROOT: ".",
       SHELL_ENABLED: "true",
@@ -106,11 +109,19 @@ test("loadConfig parses env values into runtime config", () => {
   assert.equal(config.workspace.root, process.cwd());
   assert.equal(config.shell.enabled, true);
   assert.equal(config.shell.readOnly, false);
-  assert.deepEqual(config.shell.allowedCommands, ["pwd", "git status", "npm test"]);
+  assert.deepEqual(config.shell.allowedCommands, [
+    "pwd",
+    "git status",
+    "npm test"
+  ]);
   assert.deepEqual(config.shell.dangerousCommands, ["git push", "git commit"]);
   assert.equal(config.shell.timeoutMs, 15000);
   assert.equal(config.shell.maxOutputChars, 4096);
-  assert.deepEqual(config.runner.args, ["--approval-mode", "auto", "--model gpt-5"]);
+  assert.deepEqual(config.runner.args, [
+    "--approval-mode",
+    "auto",
+    "--model gpt-5"
+  ]);
   assert.equal(config.runner.throttleMs, 1500);
   assert.equal(config.runner.maxBufferChars, 2048);
   assert.equal(config.reasoning.mode, "quote");
@@ -148,7 +159,8 @@ test("loadConfig falls back to the current working directory when configured pat
         CODEX_WORKDIR: "/definitely/missing/codex-workdir",
         SHELL_ALLOWED_COMMANDS: '["pwd"]',
         GITHUB_DEFAULT_WORKDIR: "/definitely/missing/github-workdir",
-        MCP_SERVERS: '[{"name":"filesystem","command":"npx","cwd":"/definitely/missing/mcp-cwd"}]'
+        MCP_SERVERS:
+          '[{"name":"filesystem","command":"npx","cwd":"/definitely/missing/mcp-cwd"}]'
       },
       () => loadConfig()
     )

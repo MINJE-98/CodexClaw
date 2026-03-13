@@ -41,7 +41,9 @@ function pickJobId(text, fallbackJobId) {
 export class GitHubSkill {
   constructor({ config }) {
     this.config = config;
-    this.octokit = config.github.token ? new Octokit({ auth: config.github.token }) : null;
+    this.octokit = config.github.token
+      ? new Octokit({ auth: config.github.token })
+      : null;
     this.testJobs = new Map();
     this.latestTestJobId = "";
   }
@@ -56,7 +58,9 @@ export class GitHubSkill {
     const normalized = text.toLowerCase();
     return (
       normalized.startsWith("/gh") ||
-      /github|git push|git commit|提交|推送|创建仓库|playwright|测试状态|run test|运行测试/.test(normalized)
+      /github|git push|git commit|提交|推送|创建仓库|playwright|测试状态|run test|运行测试/.test(
+        normalized
+      )
     );
   }
 
@@ -80,7 +84,7 @@ export class GitHubSkill {
       return this.startTests(workdir, locale);
     }
 
-    if ((/推送|\bpush\b/.test(normalized) && !/提交|commit/.test(normalized))) {
+    if (/推送|\bpush\b/.test(normalized) && !/提交|commit/.test(normalized)) {
       return this.pushOnly(workdir, locale);
     }
 
@@ -254,7 +258,9 @@ export class GitHubSkill {
 
     const job = this.testJobs.get(targetJobId);
     if (!job) {
-      return { text: t(locale, "githubTestJobNotFound", { jobId: targetJobId }) };
+      return {
+        text: t(locale, "githubTestJobNotFound", { jobId: targetJobId })
+      };
     }
 
     return {

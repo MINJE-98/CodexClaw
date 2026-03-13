@@ -151,7 +151,9 @@ export function formatPtyOutput(raw, options = {}) {
 
   if (reasoningBlocks.length) {
     const title = escapeMarkdownV2("Reasoning Stream (tap to expand):");
-    const rendered = reasoningBlocks.map((block) => renderReasoningBlock(block, mode));
+    const rendered = reasoningBlocks.map((block) =>
+      renderReasoningBlock(block, mode)
+    );
     sections.push([title, ...rendered].join("\n"));
   }
 

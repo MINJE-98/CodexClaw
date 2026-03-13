@@ -1,0 +1,25 @@
+name: Telegram Smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Telegram getMe smoke check
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_EXPECTED_USERNAME: ${{ secrets.TELEGRAM_EXPECTED_USERNAME }}
+          TELEGRAM_SMOKE_CHAT_ID: ${{ secrets.TELEGRAM_SMOKE_CHAT_ID }}
+        run: npm run telegram:smoke

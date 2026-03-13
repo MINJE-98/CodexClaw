@@ -53,13 +53,17 @@ function formatProjectLines(projects, currentWorkdir) {
 }
 
 function formatSkillLines(skillStates) {
-  return skillStates.map((skill) => `- ${skill.name}: ${skill.enabled ? "on" : "off"}`);
+  return skillStates.map(
+    (skill) => `- ${skill.name}: ${skill.enabled ? "on" : "off"}`
+  );
 }
 
 function suggestProjectName(input, projects) {
   const candidates = [
     ...new Set(
-      projects.flatMap((project) => [project.relativePath, project.name]).filter(Boolean)
+      projects
+        .flatMap((project) => [project.relativePath, project.name])
+        .filter(Boolean)
     )
   ];
 
@@ -84,11 +88,17 @@ export function registerHandlers({
   const localeOf = (chatId) => ptyManager.getLanguage(chatId);
 
   bot.start(async (ctx) => {
-    await sendChunkedMarkdown(ctx, t(localeOf(ctx.chat.id), "startLines").join("\n"));
+    await sendChunkedMarkdown(
+      ctx,
+      t(localeOf(ctx.chat.id), "startLines").join("\n")
+    );
   });
 
   bot.command("help", async (ctx) => {
-    await sendChunkedMarkdown(ctx, t(localeOf(ctx.chat.id), "helpLines").join("\n"));
+    await sendChunkedMarkdown(
+      ctx,
+      t(localeOf(ctx.chat.id), "helpLines").join("\n")
+    );
   });
 
   bot.command("status", async (ctx) => {
@@ -100,10 +110,15 @@ export function registerHandlers({
       ? `enabled, ${shellManager.isReadOnly() ? "read-only" : "writable"} (${shellManager.getAllowedCommands().length} prefixes)`
       : "disabled";
     const skillsSummary =
-      skillStates.map((skill) => `${skill.name}:${skill.enabled ? "on" : "off"}`).join(", ") || "none";
+      skillStates
+        .map((skill) => `${skill.name}:${skill.enabled ? "on" : "off"}`)
+        .join(", ") || "none";
     const mcpSummary = mcpServers.length
       ? mcpServers
-          .map((server) => `${server.name}:${server.enabled ? "on" : "off"}/${server.connected ? "up" : "down"}`)
+          .map(
+            (server) =>
+              `${server.name}:${server.enabled ? "on" : "off"}/${server.connected ? "up" : "down"}`
+          )
           .join(", ")
       : "none";
     await sendChunkedMarkdown(
@@ -111,7 +126,10 @@ export function registerHandlers({
       t(locale, "statusLines", {
         status,
         recentProjects:
-          ptyManager.getRecentProjects(ctx.chat.id).map((item) => item.relativePath).join(", ") || ".",
+          ptyManager
+            .getRecentProjects(ctx.chat.id)
+            .map((item) => item.relativePath)
+            .join(", ") || ".",
         shellSummary,
         skillsSummary,
         mcpSummary
@@ -125,7 +143,11 @@ export function registerHandlers({
       ctx,
       t(localeOf(ctx.chat.id), "pwdLines", {
         status,
-        recent: ptyManager.getRecentProjects(ctx.chat.id).map((item) => item.relativePath).join(", ") || "."
+        recent:
+          ptyManager
+            .getRecentProjects(ctx.chat.id)
+            .map((item) => item.relativePath)
+            .join(", ") || "."
       }).join("\n")
     );
   });
@@ -153,7 +175,9 @@ export function registerHandlers({
     }
 
     if (/^recent$/i.test(payload)) {
-      const recent = ptyManager.getRecentProjects(ctx.chat.id).map((project) => `- ${project.relativePath}`);
+      const recent = ptyManager
+        .getRecentProjects(ctx.chat.id)
+        .map((project) => `- ${project.relativePath}`);
       await sendChunkedMarkdown(
         ctx,
         t(locale, "repoRecent", {
@@ -168,7 +192,8 @@ export function registerHandlers({
       if (payload !== "-") {
         const projects = ptyManager.listProjects();
         const exact = projects.find(
-          (project) => project.relativePath === payload || project.name === payload
+          (project) =>
+            project.relativePath === payload || project.name === payload
         );
 
         if (!exact) {
@@ -180,7 +205,9 @@ export function registerHandlers({
           if (!matches.length) {
             const suggestion = suggestProjectName(payload, projects);
             if (suggestion) {
-              throw new Error(t(locale, "repoSuggestion", { value: payload, suggestion }));
+              throw new Error(
+                t(locale, "repoSuggestion", { value: payload, suggestion })
+              );
             }
 
             throw new Error(t(locale, "repoNoMatch", { value: payload }));
@@ -213,7 +240,10 @@ export function registerHandlers({
         })
       );
     } catch (error) {
-      await sendChunkedMarkdown(ctx, t(locale, "repoSwitchFailed", { error: error.message }));
+      await sendChunkedMarkdown(
+        ctx,
+        t(locale, "repoSwitchFailed", { error: error.message })
+      );
     }
   });
 
@@ -263,13 +293,19 @@ export function registerHandlers({
         })
       );
     } catch (error) {
-      await sendChunkedMarkdown(ctx, t(locale, "skillManagementFailed", { error: error.message }));
+      await sendChunkedMarkdown(
+        ctx,
+        t(locale, "skillManagementFailed", { error: error.message })
+      );
     }
   });
 
   bot.command("new", async (ctx) => {
     const result = ptyManager.resetCurrentProjectConversation(ctx.chat.id);
-    await sendChunkedMarkdown(ctx, t(localeOf(ctx.chat.id), "conversationReset", { closed: result.closed }));
+    await sendChunkedMarkdown(
+      ctx,
+      t(localeOf(ctx.chat.id), "conversationReset", { closed: result.closed })
+    );
   });
 
   bot.command("restart", async (ctx) => {
@@ -297,7 +333,10 @@ export function registerHandlers({
     });
 
     if (!result.started) {
-      await sendChunkedMarkdown(ctx, t(locale, "taskBusy", { mode: result.activeMode || "unknown" }));
+      await sendChunkedMarkdown(
+        ctx,
+        t(locale, "taskBusy", { mode: result.activeMode || "unknown" })
+      );
     }
   });
 
@@ -372,7 +411,10 @@ export function registerHandlers({
     });
 
     if (!result.started) {
-      await sendChunkedMarkdown(ctx, t(locale, "taskBusy", { mode: result.activeMode || "unknown" }));
+      await sendChunkedMarkdown(
+        ctx,
+        t(locale, "taskBusy", { mode: result.activeMode || "unknown" })
+      );
     }
   });
 
@@ -390,7 +432,10 @@ export function registerHandlers({
     });
 
     if (!result.started) {
-      await sendChunkedMarkdown(ctx, t(locale, "taskBusy", { mode: result.activeMode || "unknown" }));
+      await sendChunkedMarkdown(
+        ctx,
+        t(locale, "taskBusy", { mode: result.activeMode || "unknown" })
+      );
     }
   });
 
@@ -399,7 +444,10 @@ export function registerHandlers({
     const value = extractCommandPayload(ctx.message.text, "model");
     if (!value) {
       const status = ptyManager.getStatus(ctx.chat.id);
-      await sendChunkedMarkdown(ctx, t(locale, "modelCurrent", { model: status.preferredModel }));
+      await sendChunkedMarkdown(
+        ctx,
+        t(locale, "modelCurrent", { model: status.preferredModel })
+      );
       return;
     }
 
@@ -419,19 +467,30 @@ export function registerHandlers({
     const locale = localeOf(ctx.chat.id);
     const value = extractCommandPayload(ctx.message.text, "verbose");
     if (!value) {
-      await sendChunkedMarkdown(ctx, t(locale, "verboseCurrent", { enabled: ptyManager.isVerbose(ctx.chat.id) }));
+      await sendChunkedMarkdown(
+        ctx,
+        t(locale, "verboseCurrent", {
+          enabled: ptyManager.isVerbose(ctx.chat.id)
+        })
+      );
       return;
     }
 
     if (/^(on|true|1)$/i.test(value)) {
       ptyManager.setVerbose(ctx.chat.id, true);
-      await sendChunkedMarkdown(ctx, t(locale, "verboseSet", { enabled: true }));
+      await sendChunkedMarkdown(
+        ctx,
+        t(locale, "verboseSet", { enabled: true })
+      );
       return;
     }
 
     if (/^(off|false|0)$/i.test(value)) {
       ptyManager.setVerbose(ctx.chat.id, false);
-      await sendChunkedMarkdown(ctx, t(locale, "verboseSet", { enabled: false }));
+      await sendChunkedMarkdown(
+        ctx,
+        t(locale, "verboseSet", { enabled: false })
+      );
       return;
     }
 
@@ -468,12 +527,18 @@ export function registerHandlers({
 
   bot.command("interrupt", async (ctx) => {
     const ok = ptyManager.interrupt(ctx.chat.id);
-    await sendChunkedMarkdown(ctx, t(localeOf(ctx.chat.id), "interruptResult", { ok }));
+    await sendChunkedMarkdown(
+      ctx,
+      t(localeOf(ctx.chat.id), "interruptResult", { ok })
+    );
   });
 
   bot.command("stop", async (ctx) => {
     const ok = ptyManager.closeSession(ctx.chat.id);
-    await sendChunkedMarkdown(ctx, t(localeOf(ctx.chat.id), "stopResult", { ok }));
+    await sendChunkedMarkdown(
+      ctx,
+      t(localeOf(ctx.chat.id), "stopResult", { ok })
+    );
   });
 
   bot.command("cron_now", async (ctx) => {
@@ -482,7 +547,10 @@ export function registerHandlers({
       await scheduler.triggerDailySummaryNow(ctx.from.id);
       await sendChunkedMarkdown(ctx, t(locale, "cronTriggered"));
     } catch (error) {
-      await sendChunkedMarkdown(ctx, t(locale, "triggerFailed", { error: error.message }));
+      await sendChunkedMarkdown(
+        ctx,
+        t(locale, "triggerFailed", { error: error.message })
+      );
     }
   });
 
@@ -503,7 +571,10 @@ export function registerHandlers({
       });
       await sendSkillResult(ctx, result, locale);
     } catch (error) {
-      await sendChunkedMarkdown(ctx, t(locale, "githubFailed", { error: error.message }));
+      await sendChunkedMarkdown(
+        ctx,
+        t(locale, "githubFailed", { error: error.message })
+      );
     }
   });
 
@@ -519,7 +590,10 @@ export function registerHandlers({
       const result = await skills.mcp.execute({ text, ctx, locale });
       await sendSkillResult(ctx, result, locale);
     } catch (error) {
-      await sendChunkedMarkdown(ctx, t(locale, "mcpFailed", { error: error.message }));
+      await sendChunkedMarkdown(
+        ctx,
+        t(locale, "mcpFailed", { error: error.message })
+      );
     }
   });
 
@@ -566,14 +640,20 @@ export function registerHandlers({
       if (route.target === "pty") {
         const result = await ptyManager.sendPrompt(ctx, route.prompt);
         if (!result.started) {
-          await sendChunkedMarkdown(ctx, t(locale, "taskBusy", { mode: result.activeMode || "unknown" }));
+          await sendChunkedMarkdown(
+            ctx,
+            t(locale, "taskBusy", { mode: result.activeMode || "unknown" })
+          );
         }
         return;
       }
 
       const skill = skills[route.skill];
       if (!skill) {
-        await sendChunkedMarkdown(ctx, t(locale, "skillNotFound", { name: route.skill }));
+        await sendChunkedMarkdown(
+          ctx,
+          t(locale, "skillNotFound", { name: route.skill })
+        );
         return;
       }
 
@@ -585,7 +665,10 @@ export function registerHandlers({
       });
       await sendSkillResult(ctx, result, locale);
     } catch (error) {
-      await sendChunkedMarkdown(ctx, t(locale, "processingFailed", { error: error.message }));
+      await sendChunkedMarkdown(
+        ctx,
+        t(locale, "processingFailed", { error: error.message })
+      );
     }
   });
 }

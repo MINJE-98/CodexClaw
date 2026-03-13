@@ -12,7 +12,11 @@ export function matchesAllowedCommandPrefix(argv, allowedPrefixes) {
   if (!Array.isArray(argv) || !argv.length) return false;
 
   return allowedPrefixes.some((prefix) => {
-    if (!Array.isArray(prefix) || !prefix.length || prefix.length > argv.length) {
+    if (
+      !Array.isArray(prefix) ||
+      !prefix.length ||
+      prefix.length > argv.length
+    ) {
       return false;
     }
 

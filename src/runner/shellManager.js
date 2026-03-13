@@ -16,9 +16,11 @@ export class ShellManager {
   constructor({ config }) {
     this.config = config;
     this.runningJobs = new Map();
-    this.allowedPrefixes = config.shell.allowedCommands.map((command) => parseCommandLine(command));
-    this.dangerousPrefixes = (config.shell.dangerousCommands || []).map((command) =>
+    this.allowedPrefixes = config.shell.allowedCommands.map((command) =>
       parseCommandLine(command)
+    );
+    this.dangerousPrefixes = (config.shell.dangerousCommands || []).map(
+      (command) => parseCommandLine(command)
     );
   }
 
@@ -69,7 +71,11 @@ export class ShellManager {
     }
 
     if (!matchesAllowedCommandPrefix(argv, this.allowedPrefixes)) {
-      throw new Error(t(locale, "shellNotAllowlisted", { allowed: this.getAllowedCommands().join(", ") }));
+      throw new Error(
+        t(locale, "shellNotAllowlisted", {
+          allowed: this.getAllowedCommands().join(", ")
+        })
+      );
     }
 
     const dangerous = matchesAllowedCommandPrefix(argv, this.dangerousPrefixes);
@@ -147,7 +153,10 @@ export class ShellManager {
           workdir,
           exitCode: -1,
           signal: null,
-          output: trimOutputTail(`${output}\n[spawn error] ${error.message}`, outputLimit)
+          output: trimOutputTail(
+            `${output}\n[spawn error] ${error.message}`,
+            outputLimit
+          )
         });
       });
 
