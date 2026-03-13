@@ -44,8 +44,7 @@ function likelyGeneralTask(text) {
 }
 
 export class Router {
-  constructor({ mcpClient, skills }) {
-    this.mcpClient = mcpClient;
+  constructor({ skills }) {
     this.skills = skills;
   }
 
@@ -71,22 +70,9 @@ export class Router {
     }
 
     if (likelyCodingTask(raw)) {
-      const context = await this.mcpClient.gatherContextForTask(raw);
-      const prompt = context
-        ? [
-            "你将收到一段来自 MCP 的外部上下文。只在相关时使用。",
-            "<mcp_context>",
-            context,
-            "</mcp_context>",
-            "",
-            "用户请求:",
-            raw
-          ].join("\n")
-        : raw;
-
       return {
         target: "pty",
-        prompt
+        prompt: raw
       };
     }
 

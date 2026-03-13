@@ -29,7 +29,6 @@ const skills = {
 };
 
 const router = new Router({
-  mcpClient,
   skills
 });
 
