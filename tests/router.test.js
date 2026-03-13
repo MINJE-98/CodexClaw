@@ -56,7 +56,7 @@ test("router sends coding tasks directly to codex PTY", async () => {
   });
 });
 
-test("router sends generic requests to MCP skill when available", async () => {
+test("router sends generic non-command requests to codex PTY", async () => {
   const router = new Router({
     skills: {
       github: createSkill(() => false),
@@ -64,12 +64,11 @@ test("router sends generic requests to MCP skill when available", async () => {
     }
   });
 
-  const route = await router.routeMessage("帮我总结这个项目");
+  const route = await router.routeMessage("who are u?");
 
   assert.deepEqual(route, {
-    target: "skill",
-    skill: "mcp",
-    payload: "帮我总结这个项目"
+    target: "pty",
+    prompt: "who are u?"
   });
 });
 

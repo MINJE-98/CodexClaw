@@ -20,15 +20,8 @@ export class McpSkill {
       return this.handleCommand(normalized);
     }
 
-    const context = await this.mcpClient.gatherContextForTask(normalized);
-    if (!context) {
-      return {
-        text: "MCP 已连接，但没有找到可用于该请求的上下文工具。"
-      };
-    }
-
     return {
-      text: `MCP Context:\n${context}`
+      text: "当前仅支持显式 MCP 命令。请使用 /mcp tools <server> 或 /mcp call <server> <tool> <jsonArgs>。"
     };
   }
 

@@ -11,7 +11,7 @@ It is strictly inspired by `RichardAtCT/claude-code-telegram`, but this project 
 This bot connects Telegram to Codex CLI and routes tasks to the right execution surface:
 
 - **Coding tasks** -> Codex CLI in `node-pty` (real TTY, stable interactive behavior)
-- **General/tooling tasks** -> Subagents (`MCP Skill`, `GitHub Skill`)
+- **Explicit tool tasks** -> Subagents (`/mcp`, `GitHub Skill`)
 - **Proactive automation** -> Cron scheduler for daily summaries and push notifications
 
 Key design goals:
@@ -95,7 +95,7 @@ Core modules:
 To avoid duplicated context fetch:
 
 - **Coding requests** are sent directly to Codex CLI (Codex can use its own MCP stack)
-- **Bot-side MCP** is only used by `/mcp ...` and general subagent requests
+- **Bot-side MCP** is only used by explicit `/mcp ...` commands
 
 This prevents:
 
@@ -136,6 +136,7 @@ PTY output is streamed with throttled `editMessageText` updates.
 - Reasoning tags: `<think>...</think>` extracted and rendered as:
   - spoiler (`||...||`, default)
   - quote block (if `REASONING_RENDER_MODE=quote`)
+- If `node-pty` cannot spawn on the current host, the runner falls back to `codex exec` for per-request execution
 
 ## Event-Driven Automation
 
@@ -201,7 +202,8 @@ E2E_TEST_COMMAND=npx playwright test --reporter=line
 - **Markdown parse errors**: reduce output size/context; check special characters in tool output
 - **MCP failures**: run `/mcp tools <server>` first to validate server availability
 - **GitHub API failures**: verify `GITHUB_TOKEN` scope (`repo`) and account permissions
-- **Duplicate MCP suspicion**: ensure coding tasks are routed directly to Codex, and bot MCP is used only for `/mcp` or general tasks
+- **Duplicate MCP suspicion**: ensure coding tasks are routed directly to Codex, and bot MCP is used only for `/mcp`
+- **`posix_spawnp failed`**: this means PTY spawn is blocked on the host; the runner will fall back to `codex exec`
 
 ## Reference
 

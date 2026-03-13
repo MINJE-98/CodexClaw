@@ -42,8 +42,8 @@ export function registerHandlers({ bot, router, ptyManager, skills, scheduler })
       ctx,
       [
         "codex-telegram-claws ready.",
-        "发送编码任务会路由到 Codex CLI。",
-        "发送通用检索任务会尝试走 MCP Skill。",
+        "普通消息和编码任务会路由到 Codex。",
+        "MCP 只在显式 /mcp 命令下调用。",
         "GitHub 指令示例: /gh commit \"feat: init\""
       ].join("\n")
     );
@@ -59,7 +59,7 @@ export function registerHandlers({ bot, router, ptyManager, skills, scheduler })
         "/stop - 终止当前 chat 的 PTY 会话",
         "/cron_now - 立即触发一次日报推送",
         "/gh ... - GitHub skill",
-        "/mcp ... - MCP skill"
+        "/mcp ... - MCP skill (显式调用)"
       ].join("\n")
     );
   });
