@@ -49,9 +49,14 @@ test("runHealthcheck passes for a valid local config", async () => {
   });
 
   assert.equal(result.ok, true);
-  assert.equal(result.checks.every((check) => typeof check.detail === "string"), true);
   assert.equal(
-    result.checks.every((check) => ["pass", "warn", "fail"].includes(check.status)),
+    result.checks.every((check) => typeof check.detail === "string"),
+    true
+  );
+  assert.equal(
+    result.checks.every((check) =>
+      ["pass", "warn", "fail"].includes(check.status)
+    ),
     true
   );
   assert.equal(

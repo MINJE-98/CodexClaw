@@ -6,6 +6,10 @@ type TranslationEntry =
   | string
   | ((params: TranslationParams) => string | string[]);
 type TranslationCatalog = Record<string, TranslationEntry>;
+type TranslateFn = {
+  (locale: string, key: ArrayMessageKey, params?: TranslationParams): string[];
+  (locale: string, key: string, params?: TranslationParams): string;
+};
 
 const DEFAULT_LANGUAGE: Locale = "en";
 
@@ -814,21 +818,11 @@ export function languageLabel(
   );
 }
 
-export function t(
-  locale: string,
-  key: ArrayMessageKey,
-  params?: TranslationParams
-): string[];
-export function t(
-  locale: string,
-  key: string,
-  params?: TranslationParams
-): string;
-export function t(
+export const t: TranslateFn = ((
   locale: string,
   key: string,
   params: TranslationParams = {}
-): string | string[] {
+): string | string[] => {
   const resolvedLocale = normalizeLanguage(locale) || DEFAULT_LANGUAGE;
   const catalogs = [
     MESSAGES[resolvedLocale],
@@ -843,4 +837,4 @@ export function t(
   }
 
   throw new Error(`Missing i18n message: ${key}`);
-}
+}) as TranslateFn;
