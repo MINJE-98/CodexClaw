@@ -2,14 +2,61 @@ import fs from "node:fs";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
+import type { AppConfig } from "../config.js";
 import { repairNodePtySpawnHelperPermissions } from "../runner/ptyPreflight.js";
 import { extractCodexExecResponse } from "../bot/formatter.js";
 
-function makeCheck(name, status, detail) {
+export type HealthcheckStatus = "pass" | "warn" | "fail";
+
+export interface HealthcheckCheck {
+  name: string;
+  status: HealthcheckStatus;
+  detail: string;
+}
+
+export interface HealthcheckResult {
+  ok: boolean;
+  checks: HealthcheckCheck[];
+}
+
+interface CliCodexLiveCheckResult {
+  backend: "cli";
+  output: string;
+}
+
+interface SdkCodexLiveCheckResult {
+  backend: "sdk";
+  threadId: string | null;
+  output: string;
+}
+
+type CodexLiveCheckResult = CliCodexLiveCheckResult | SdkCodexLiveCheckResult;
+
+interface HealthcheckOptions {
+  strict?: boolean;
+  env?: NodeJS.ProcessEnv;
+  telegramLiveCheck?: boolean;
+  codexLiveCheck?: boolean;
+  codexLiveRunner?: (config: AppConfig) => Promise<CodexLiveCheckResult>;
+}
+
+interface TelegramGetMeResponse {
+  ok?: boolean;
+  result?: {
+    username?: string;
+  };
+  description?: string;
+}
+
+function makeCheck(
+  name: string,
+  status: HealthcheckStatus,
+  detail: string
+): HealthcheckCheck {
   return { name, status, detail };
 }
 
-function isPathExecutable(filePath) {
+function isPathExecutable(filePath: string): boolean {
   try {
     fs.accessSync(filePath, fs.constants.X_OK);
     return true;
@@ -18,7 +65,10 @@ function isPathExecutable(filePath) {
   }
 }
 
-export function resolveCommandPath(command, env = process.env) {
+export function resolveCommandPath(
+  command: string,
+  env: NodeJS.ProcessEnv = process.env
+): string {
   const raw = String(command || "").trim();
   if (!raw) return "";
 
@@ -38,7 +88,10 @@ export function resolveCommandPath(command, env = process.env) {
   return "";
 }
 
-function checkDirectory(name, directoryPath) {
+function checkDirectory(
+  name: string,
+  directoryPath: string | undefined
+): HealthcheckCheck {
   if (!directoryPath) {
     return makeCheck(name, "fail", "Path is empty.");
   }
@@ -54,23 +107,29 @@ function checkDirectory(name, directoryPath) {
   return makeCheck(name, "pass", directoryPath);
 }
 
-function checkWritableDirectory(name, directoryPath) {
+function checkWritableDirectory(
+  name: string,
+  directoryPath: string | undefined
+): HealthcheckCheck {
   const base = checkDirectory(name, directoryPath);
   if (base.status !== "pass") return base;
+  const resolvedPath = base.detail;
 
   try {
-    fs.accessSync(directoryPath, fs.constants.W_OK);
+    fs.accessSync(resolvedPath, fs.constants.W_OK);
     return base;
-  } catch (error) {
+  } catch (error: unknown) {
     return makeCheck(
       name,
       "fail",
-      `Directory is not writable: ${directoryPath} (${error.message})`
+      `Directory is not writable: ${resolvedPath} (${error instanceof Error ? error.message : String(error)})`
     );
   }
 }
 
-function runCliCodexLiveCheck(config) {
+function runCliCodexLiveCheck(
+  config: AppConfig
+): Promise<CliCodexLiveCheckResult> {
   return new Promise((resolve, reject) => {
     const prompt = "Reply with exactly: HEALTHCHECK_OK";
     const proc = spawn(
@@ -85,10 +144,10 @@ function runCliCodexLiveCheck(config) {
     let stdout = "";
     let stderr = "";
 
-    proc.stdout?.on("data", (chunk) => {
+    proc.stdout?.on("data", (chunk: Buffer | string) => {
       stdout += String(chunk || "");
     });
-    proc.stderr?.on("data", (chunk) => {
+    proc.stderr?.on("data", (chunk: Buffer | string) => {
       stderr += String(chunk || "");
     });
     proc.on("error", reject);
@@ -118,7 +177,9 @@ function runCliCodexLiveCheck(config) {
   });
 }
 
-async function runSdkCodexLiveCheck(config) {
+async function runSdkCodexLiveCheck(
+  config: AppConfig
+): Promise<SdkCodexLiveCheckResult> {
   const { Codex } = await import("@openai/codex-sdk");
   const codex = new Codex({
     config: config.runner.sdkConfig
@@ -148,7 +209,10 @@ async function runSdkCodexLiveCheck(config) {
   };
 }
 
-async function runCodexLiveCheck(config, options = {}) {
+async function runCodexLiveCheck(
+  config: AppConfig,
+  options: HealthcheckOptions = {}
+): Promise<CodexLiveCheckResult> {
   if (typeof options.codexLiveRunner === "function") {
     return options.codexLiveRunner(config);
   }
@@ -160,10 +224,13 @@ async function runCodexLiveCheck(config, options = {}) {
   return runCliCodexLiveCheck(config);
 }
 
-export async function runHealthcheck(config, options = {}) {
+export async function runHealthcheck(
+  config: AppConfig,
+  options: HealthcheckOptions = {}
+): Promise<HealthcheckResult> {
   const strict = Boolean(options.strict);
   const env = options.env || process.env;
-  const checks = [];
+  const checks: HealthcheckCheck[] = [];
 
   checks.push(checkDirectory("workspace root", config.workspace.root));
   checks.push(checkDirectory("runner workdir", config.runner.cwd));
@@ -213,7 +280,7 @@ export async function runHealthcheck(config, options = {}) {
       const response = await fetch(
         `https://api.telegram.org/bot${config.telegram.botToken}/getMe`
       );
-      const payload = await response.json();
+      const payload = (await response.json()) as TelegramGetMeResponse;
       if (response.ok && payload?.ok && payload?.result?.username) {
         checks.push(
           makeCheck(
@@ -231,8 +298,14 @@ export async function runHealthcheck(config, options = {}) {
           )
         );
       }
-    } catch (error) {
-      checks.push(makeCheck("telegram api", "fail", error.message));
+    } catch (error: unknown) {
+      checks.push(
+        makeCheck(
+          "telegram api",
+          "fail",
+          error instanceof Error ? error.message : String(error)
+        )
+      );
     }
   }
 
@@ -240,13 +313,15 @@ export async function runHealthcheck(config, options = {}) {
   if (codexLiveCheck) {
     try {
       const result = await runCodexLiveCheck(config, options);
+      const threadDetail =
+        "threadId" in result && result.threadId
+          ? ` (thread ${result.threadId})`
+          : "";
       checks.push(
         makeCheck(
           "codex live",
           "pass",
-          `${result.backend} backend responded with ${result.output}${
-            result.threadId ? ` (thread ${result.threadId})` : ""
-          }`
+          `${result.backend} backend responded with ${result.output}${threadDetail}`
         )
       );
     } catch (error) {

@@ -11,6 +11,7 @@ import {
   type Locale
 } from "./i18n.js";
 import { escapeMarkdownV2, splitTelegramMessage } from "./formatter.js";
+import type { Scheduler } from "../cron/scheduler.js";
 import type { Router } from "../orchestrator/router.js";
 import type { PtyManager } from "../runner/ptyManager.js";
 import type { ShellManager } from "../runner/shellManager.js";
@@ -28,7 +29,7 @@ interface RegisterHandlersOptions {
   shellManager: ShellManager;
   skills: Record<string, any>;
   skillRegistry: SkillRegistry;
-  scheduler: any;
+  scheduler: Scheduler;
   adminActions?: {
     restart?: () => Promise<void>;
   };

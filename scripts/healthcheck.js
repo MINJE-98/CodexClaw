@@ -10,7 +10,8 @@ let config;
 try {
   config = loadConfig();
 } catch (error) {
-  console.error(`[FAIL] config: ${error.message}`);
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`[FAIL] config: ${message}`);
   process.exit(1);
 }
 
