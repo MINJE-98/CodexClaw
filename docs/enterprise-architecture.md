@@ -107,9 +107,9 @@ Implementation roadmap: [phase-1-roadmap.md](/Users/ding/Documents/Code/Github/c
 
 For enterprise rollout, migrate the following first:
 
-- `src/config.js`
-- `src/orchestrator/router.js`
-- `src/orchestrator/skillRegistry.js`
+- `src/config.ts`
+- `src/orchestrator/router.ts`
+- `src/orchestrator/skillRegistry.ts`
 - `src/orchestrator/mcpClient.js`
 - `src/runner/ptyManager.js`
 - `src/runner/shellManager.js`

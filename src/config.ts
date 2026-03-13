@@ -5,7 +5,64 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-function required(name) {
+export type ReasoningMode = "quote" | "spoiler";
+
+export interface McpServerConfig {
+  name: string;
+  command: string;
+  args: string[];
+  cwd: string;
+  env: Record<string, string>;
+}
+
+export interface AppConfig {
+  app: {
+    name: string;
+    stateFile: string;
+  };
+  workspace: {
+    root: string;
+  };
+  telegram: {
+    botToken: string;
+    allowedUserIds: string[];
+    proactiveUserIds: string[];
+  };
+  runner: {
+    command: string;
+    args: string[];
+    cwd: string;
+    throttleMs: number;
+    maxBufferChars: number;
+    telegramChunkSize: number;
+  };
+  reasoning: {
+    mode: ReasoningMode;
+  };
+  shell: {
+    enabled: boolean;
+    readOnly: boolean;
+    allowedCommands: string[];
+    dangerousCommands: string[];
+    timeoutMs: number;
+    maxOutputChars: number;
+  };
+  cron: {
+    dailySummary: string;
+    timezone: string;
+  };
+  mcp: {
+    servers: McpServerConfig[];
+  };
+  github: {
+    token: string;
+    defaultWorkdir: string;
+    defaultBranch: string;
+    e2eCommand: string;
+  };
+}
+
+function required(name: string): string {
   const value = process.env[name];
   if (!value || !value.trim()) {
     throw new Error(`Missing required environment variable: ${name}`);
@@ -13,7 +70,7 @@ function required(name) {
   return value.trim();
 }
 
-function parseCsv(value) {
+function parseCsv(value: string | undefined): string[] {
   if (!value) return [];
   return value
     .split(",")
@@ -21,12 +78,12 @@ function parseCsv(value) {
     .filter(Boolean);
 }
 
-function parseNumber(value, fallback) {
+function parseNumber(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function parseBoolean(value, fallback = false) {
+function parseBoolean(value: string | undefined, fallback = false): boolean {
   if (value === undefined) return fallback;
   const normalized = String(value).trim().toLowerCase();
   if (["1", "true", "yes", "on"].includes(normalized)) return true;
@@ -34,22 +91,27 @@ function parseBoolean(value, fallback = false) {
   return fallback;
 }
 
-function parseArgs(value) {
-  if (!value || !value.trim()) return [];
+function parseArgs(value: string): string[] {
+  if (!value.trim()) return [];
   const parts = value.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
   return parts.map((part) => part.replace(/^"|"$/g, ""));
 }
 
-function parseJson(value, fallback) {
+function parseJson<T>(value: string | undefined, fallback: T): T {
   if (!value || !value.trim()) return fallback;
   try {
-    return JSON.parse(value);
+    return JSON.parse(value) as T;
   } catch (error) {
-    throw new Error(`Invalid JSON in environment variable: ${error.message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Invalid JSON in environment variable: ${message}`);
   }
 }
 
-function resolveDirectory(value, name, fallback = process.cwd()) {
+function resolveDirectory(
+  value: string | undefined,
+  name: string,
+  fallback = process.cwd()
+): string {
   const resolvedFallback = path.resolve(fallback);
   const candidate = path.resolve(value || resolvedFallback);
 
@@ -66,7 +128,7 @@ function resolveDirectory(value, name, fallback = process.cwd()) {
   return resolvedFallback;
 }
 
-function resolveFile(value, fallback) {
+function resolveFile(value: string | undefined, fallback: string): string {
   const candidate = path.resolve(value || fallback);
   const directory = path.dirname(candidate);
 
@@ -77,27 +139,48 @@ function resolveFile(value, fallback) {
   return candidate;
 }
 
-function normalizeMcpServer(raw, index) {
+function normalizeEnvMap(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== "object") {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(raw).map(([key, value]) => [key, String(value)])
+  );
+}
+
+function normalizeMcpServer(
+  raw: unknown,
+  index: number
+): McpServerConfig | null {
   if (!raw || typeof raw !== "object") return null;
-  if (!raw.name || !raw.command) {
+  const candidate = raw as {
+    name?: unknown;
+    command?: unknown;
+    args?: unknown;
+    cwd?: unknown;
+    env?: unknown;
+  };
+
+  if (!candidate.name || !candidate.command) {
     throw new Error(
       `Invalid MCP server config at index ${index}: "name" and "command" are required.`
     );
   }
 
   return {
-    name: String(raw.name),
-    command: String(raw.command),
-    args: Array.isArray(raw.args) ? raw.args.map(String) : [],
+    name: String(candidate.name),
+    command: String(candidate.command),
+    args: Array.isArray(candidate.args) ? candidate.args.map(String) : [],
     cwd: resolveDirectory(
-      raw.cwd ? String(raw.cwd) : process.cwd(),
+      candidate.cwd ? String(candidate.cwd) : process.cwd(),
       `MCP_SERVERS[${index}].cwd`
     ),
-    env: raw.env && typeof raw.env === "object" ? raw.env : {}
+    env: normalizeEnvMap(candidate.env)
   };
 }
 
-export function loadConfig() {
+export function loadConfig(): AppConfig {
   const allowedUserIds = parseCsv(process.env.ALLOWED_USER_IDS);
   if (!allowedUserIds.length) {
     throw new Error(
@@ -108,11 +191,11 @@ export function loadConfig() {
   const proactiveUserIds = parseCsv(
     process.env.PROACTIVE_USER_IDS || process.env.ALLOWED_USER_IDS
   );
-  const rawMcpServers = parseJson(process.env.MCP_SERVERS, []);
+  const rawMcpServers = parseJson<unknown[]>(process.env.MCP_SERVERS, []);
   const mcpServers = Array.isArray(rawMcpServers)
     ? rawMcpServers
         .map((server, index) => normalizeMcpServer(server, index))
-        .filter(Boolean)
+        .filter((server): server is McpServerConfig => Boolean(server))
     : [];
   const runnerCwd = resolveDirectory(
     process.env.CODEX_WORKDIR,
@@ -127,7 +210,7 @@ export function loadConfig() {
     process.env.GITHUB_DEFAULT_WORKDIR,
     "GITHUB_DEFAULT_WORKDIR"
   );
-  const rawShellAllowedCommands = parseJson(
+  const rawShellAllowedCommands = parseJson<unknown[]>(
     process.env.SHELL_ALLOWED_COMMANDS,
     []
   );
@@ -136,7 +219,7 @@ export function loadConfig() {
         .map((value) => String(value).trim())
         .filter(Boolean)
     : [];
-  const rawShellDangerousCommands = parseJson(
+  const rawShellDangerousCommands = parseJson<unknown[]>(
     process.env.SHELL_DANGEROUS_COMMANDS,
     []
   );

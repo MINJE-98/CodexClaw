@@ -17,9 +17,9 @@ Phase 1 hardens the current single-host beta so it can be distributed to subsidi
 
 Scope:
 
-- Migrate `src/config.js`
-- Migrate `src/orchestrator/router.js`
-- Migrate `src/orchestrator/skillRegistry.js`
+- Migrate `src/config.ts`
+- Migrate `src/orchestrator/router.ts`
+- Migrate `src/orchestrator/skillRegistry.ts`
 - Migrate `src/orchestrator/mcpClient.js`
 - Migrate `src/runner/ptyManager.js`
 - Migrate `src/runner/shellManager.js`

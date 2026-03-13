@@ -1,17 +1,46 @@
+export interface SkillStatus {
+  name: string;
+  enabled: boolean;
+}
+
+export interface SkillRegistrySnapshot {
+  chats: Record<
+    string,
+    {
+      enabledSkills: string[];
+    }
+  >;
+}
+
+interface ChatSkillState {
+  enabledSkills: Set<string>;
+}
+
+export interface SkillRegistryOptions {
+  onChange?: (snapshot: SkillRegistrySnapshot) => void;
+}
+
 export class SkillRegistry {
-  constructor(skills = {}, { onChange } = {}) {
+  private readonly skillNames: string[];
+  private readonly chatStates: Map<string, ChatSkillState>;
+  private readonly onChange?: SkillRegistryOptions["onChange"];
+
+  constructor(
+    skills: Record<string, unknown> = {},
+    { onChange }: SkillRegistryOptions = {}
+  ) {
     this.skillNames = Object.keys(skills).sort();
     this.chatStates = new Map();
     this.onChange = onChange;
   }
 
-  normalizeSkillName(name) {
+  normalizeSkillName(name: string | undefined | null): string {
     return String(name || "")
       .trim()
       .toLowerCase();
   }
 
-  ensureKnownSkill(name) {
+  ensureKnownSkill(name: string | undefined | null): string {
     const normalized = this.normalizeSkillName(name);
     if (!this.skillNames.includes(normalized)) {
       throw new Error(`Unknown skill: ${name}`);
@@ -19,12 +48,12 @@ export class SkillRegistry {
     return normalized;
   }
 
-  ensureChatState(chatId) {
+  ensureChatState(chatId: string | number): ChatSkillState {
     const key = String(chatId);
     const existing = this.chatStates.get(key);
     if (existing) return existing;
 
-    const state = {
+    const state: ChatSkillState = {
       enabledSkills: new Set(this.skillNames)
     };
 
@@ -32,7 +61,7 @@ export class SkillRegistry {
     return state;
   }
 
-  list(chatId) {
+  list(chatId: string | number): SkillStatus[] {
     const state = this.ensureChatState(chatId);
     return this.skillNames.map((name) => ({
       name,
@@ -40,13 +69,16 @@ export class SkillRegistry {
     }));
   }
 
-  isEnabled(chatId, name) {
+  isEnabled(chatId: string | number, name: string): boolean {
     const normalized = this.ensureKnownSkill(name);
     const state = this.ensureChatState(chatId);
     return state.enabledSkills.has(normalized);
   }
 
-  enable(chatId, name) {
+  enable(
+    chatId: string | number,
+    name: string
+  ): { changed: boolean; skills: SkillStatus[] } {
     const normalized = this.ensureKnownSkill(name);
     const state = this.ensureChatState(chatId);
     const changed = !state.enabledSkills.has(normalized);
@@ -60,7 +92,10 @@ export class SkillRegistry {
     };
   }
 
-  disable(chatId, name) {
+  disable(
+    chatId: string | number,
+    name: string
+  ): { changed: boolean; skills: SkillStatus[] } {
     const normalized = this.ensureKnownSkill(name);
     const state = this.ensureChatState(chatId);
     const changed = state.enabledSkills.has(normalized);
@@ -74,8 +109,8 @@ export class SkillRegistry {
     };
   }
 
-  exportState() {
-    const chats = {};
+  exportState(): SkillRegistrySnapshot {
+    const chats: SkillRegistrySnapshot["chats"] = {};
     for (const [chatId, state] of this.chatStates.entries()) {
       chats[chatId] = {
         enabledSkills: [...state.enabledSkills].sort()
@@ -87,7 +122,7 @@ export class SkillRegistry {
     };
   }
 
-  restoreState(snapshot = {}) {
+  restoreState(snapshot: SkillRegistrySnapshot | undefined = undefined): void {
     const chats = snapshot?.chats;
     if (!chats || typeof chats !== "object") return;
 

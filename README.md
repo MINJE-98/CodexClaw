@@ -87,7 +87,8 @@ npm run healthcheck
 
 - `npm run start` - start the bot
 - `npm run dev` - watch mode for local development
-- `npm run check` - syntax validation
+- `npm run check` - TypeScript-aware type and syntax validation for the mixed JS/TS codebase
+- `npm run typecheck` - run the TypeScript compiler in `--noEmit` mode
 - `npm run lint` - ESLint for source, tests, scripts, and local JS/CJS config files
 - `npm run lint:fix` - apply safe lint fixes
 - `npm run format` - format repository files with Prettier
@@ -102,7 +103,7 @@ npm run healthcheck
 ```text
 Telegram Message
   -> src/bot/handlers.js
-  -> src/orchestrator/router.js
+  -> src/orchestrator/router.ts
      -> src/runner/ptyManager.js        (coding tasks -> Codex CLI)
      -> src/orchestrator/skills/*.js    (general tasks -> MCP/GitHub subagents)
   -> src/bot/formatter.js
@@ -112,7 +113,7 @@ Telegram Message
 Core modules:
 
 - `src/index.js`: bootstrap and lifecycle
-- `src/config.js`: env parsing and validation
+- `src/config.ts`: env parsing and validation
 - `src/bot/`: auth middleware, formatting, command handlers
 - `src/orchestrator/`: routing + MCP client + skills
 - `src/runner/ptyManager.js`: Codex PTY process + streaming
@@ -153,8 +154,8 @@ How they are triggered:
 
 Where this happens:
 
-- Router decision order: [router.js](/Users/ding/Documents/Code/Github/codex-telegram-claws/src/orchestrator/router.js)
-- Skill toggles per chat: [skillRegistry.js](/Users/ding/Documents/Code/Github/codex-telegram-claws/src/orchestrator/skillRegistry.js)
+- Router decision order: [router.ts](/Users/ding/Documents/Code/Github/codex-telegram-claws/src/orchestrator/router.ts)
+- Skill toggles per chat: [skillRegistry.ts](/Users/ding/Documents/Code/Github/codex-telegram-claws/src/orchestrator/skillRegistry.ts)
 - Telegram command entrypoints: [handlers.js](/Users/ding/Documents/Code/Github/codex-telegram-claws/src/bot/handlers.js)
 
 Operationally, subagents are the bot's control plane. Codex remains the coding execution plane.

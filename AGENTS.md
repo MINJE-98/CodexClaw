@@ -17,8 +17,9 @@
 
 ## Test Commands
 
-- `npm test`: run the full unit test suite with `node --test`.
-- `npm run check`: run a syntax check on the entrypoint and fail fast on invalid JS.
+- `npm test`: run the full unit test suite with the Node test runner plus `tsx`.
+- `npm run check`: run the repository typecheck gate.
+- `npm run typecheck`: run `tsc --noEmit` directly.
 - `npm run healthcheck`: run the local runtime health check.
 
 ## Lint And Format

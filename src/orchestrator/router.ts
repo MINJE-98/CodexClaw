@@ -18,9 +18,43 @@ const CODING_KEYWORDS = [
   "重构",
   "单测",
   "脚本"
-];
+] as const;
 
-function likelyCodingTask(text) {
+export interface RoutableSkill {
+  supports(text: string): boolean;
+}
+
+export interface RouterSkills {
+  github?: RoutableSkill | null;
+  mcp?: RoutableSkill | null;
+}
+
+export interface RouteMessageOptions {
+  chatId?: string | number;
+}
+
+export interface SkillRouteResult {
+  target: "skill";
+  skill: "github" | "mcp";
+  payload: string;
+}
+
+export interface PtyRouteResult {
+  target: "pty";
+  prompt: string;
+}
+
+export type RouteResult = SkillRouteResult | PtyRouteResult;
+
+export interface RouterOptions {
+  skills: RouterSkills;
+  isSkillEnabled?: (
+    chatId: string | number | undefined,
+    skillName: string
+  ) => boolean;
+}
+
+function likelyCodingTask(text: string): boolean {
   const normalized = text.toLowerCase();
   if (normalized.includes("```")) return true;
   if (/\b(src|tests|package\.json|dockerfile)\b/i.test(text)) return true;
@@ -28,12 +62,21 @@ function likelyCodingTask(text) {
 }
 
 export class Router {
-  constructor({ skills, isSkillEnabled = () => true }) {
+  private readonly skills: RouterSkills;
+  private readonly isSkillEnabled: (
+    chatId: string | number | undefined,
+    skillName: string
+  ) => boolean;
+
+  constructor({ skills, isSkillEnabled = () => true }: RouterOptions) {
     this.skills = skills;
     this.isSkillEnabled = isSkillEnabled;
   }
 
-  async routeMessage(text, options = {}) {
+  async routeMessage(
+    text: string,
+    options: RouteMessageOptions = {}
+  ): Promise<RouteResult> {
     const raw = text.trim();
     const chatId = options.chatId;
     const githubSkill = this.skills.github;
