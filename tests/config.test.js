@@ -10,6 +10,10 @@ const ENV_KEYS = [
   "CODEX_ARGS",
   "CODEX_WORKDIR",
   "WORKSPACE_ROOT",
+  "SHELL_ENABLED",
+  "SHELL_ALLOWED_COMMANDS",
+  "SHELL_TIMEOUT_MS",
+  "SHELL_MAX_OUTPUT_CHARS",
   "STREAM_THROTTLE_MS",
   "STREAM_BUFFER_CHARS",
   "REASONING_RENDER_MODE",
@@ -66,6 +70,10 @@ test("loadConfig parses env values into runtime config", () => {
       CODEX_ARGS: "--approval-mode auto \"--model gpt-5\"",
       CODEX_WORKDIR: ".",
       WORKSPACE_ROOT: ".",
+      SHELL_ENABLED: "true",
+      SHELL_ALLOWED_COMMANDS: '["pwd","git status","npm test"]',
+      SHELL_TIMEOUT_MS: "15000",
+      SHELL_MAX_OUTPUT_CHARS: "4096",
       STREAM_THROTTLE_MS: "1500",
       STREAM_BUFFER_CHARS: "2048",
       REASONING_RENDER_MODE: "quote",
@@ -86,6 +94,10 @@ test("loadConfig parses env values into runtime config", () => {
   assert.deepEqual(config.telegram.proactiveUserIds, ["2"]);
   assert.equal(config.runner.command, "codex");
   assert.equal(config.workspace.root, process.cwd());
+  assert.equal(config.shell.enabled, true);
+  assert.deepEqual(config.shell.allowedCommands, ["pwd", "git status", "npm test"]);
+  assert.equal(config.shell.timeoutMs, 15000);
+  assert.equal(config.shell.maxOutputChars, 4096);
   assert.deepEqual(config.runner.args, ["--approval-mode", "auto", "--model gpt-5"]);
   assert.equal(config.runner.throttleMs, 1500);
   assert.equal(config.runner.maxBufferChars, 2048);
@@ -122,6 +134,7 @@ test("loadConfig falls back to the current working directory when configured pat
         ALLOWED_USER_IDS: "1",
         WORKSPACE_ROOT: "/definitely/missing/workspace-root",
         CODEX_WORKDIR: "/definitely/missing/codex-workdir",
+        SHELL_ALLOWED_COMMANDS: '["pwd"]',
         GITHUB_DEFAULT_WORKDIR: "/definitely/missing/github-workdir",
         MCP_SERVERS: '[{"name":"filesystem","command":"npx","cwd":"/definitely/missing/mcp-cwd"}]'
       },
@@ -133,4 +146,20 @@ test("loadConfig falls back to the current working directory when configured pat
   assert.equal(config.runner.cwd, cwd);
   assert.equal(config.github.defaultWorkdir, cwd);
   assert.equal(config.mcp.servers[0].cwd, cwd);
+});
+
+test("loadConfig requires shell allowlist when safe shell is enabled", () => {
+  assert.throws(
+    () =>
+      withEnv(
+        {
+          BOT_TOKEN: "telegram-token",
+          ALLOWED_USER_IDS: "1",
+          SHELL_ENABLED: "true",
+          SHELL_ALLOWED_COMMANDS: "[]"
+        },
+        () => loadConfig()
+      ),
+    /SHELL_ALLOWED_COMMANDS must contain at least one command prefix/
+  );
 });

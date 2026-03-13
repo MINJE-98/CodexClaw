@@ -37,7 +37,14 @@ async function sendSkillResult(ctx, result) {
   }
 }
 
-export function registerHandlers({ bot, router, ptyManager, skills, scheduler }) {
+function formatProjectLines(projects, currentWorkdir) {
+  return projects.map((project) => {
+    const marker = project.path === currentWorkdir ? " <current>" : "";
+    return `- ${project.relativePath}${marker}`;
+  });
+}
+
+export function registerHandlers({ bot, router, ptyManager, shellManager, skills, scheduler }) {
   bot.start(async (ctx) => {
     await sendChunkedMarkdown(
       ctx,
@@ -45,7 +52,7 @@ export function registerHandlers({ bot, router, ptyManager, skills, scheduler })
         "codex-telegram-claws ready.",
         "普通消息和编码任务会路由到 Codex。",
         "MCP 只在显式 /mcp 命令下调用。",
-        "试试: /status, /repo, /pwd, /exec, /auto, /plan, /model, /new",
+        "试试: /status, /repo, /pwd, /exec, /auto, /plan, /model, /new, /sh",
         "GitHub 指令示例: /gh commit \"feat: init\""
       ].join("\n")
     );
@@ -61,11 +68,14 @@ export function registerHandlers({ bot, router, ptyManager, skills, scheduler })
         "/pwd - 查看当前项目目录",
         "/repo - 列出可切换项目",
         "/repo <name> - 切换当前 chat 的项目",
+        "/repo recent - 查看最近使用过的项目",
+        "/repo - - 切回上一个项目",
         "/new - 新建会话并清空当前上下文",
         "/exec <task> - 强制用 codex exec 运行一次任务",
         "/auto <task> - 强制用 codex exec --full-auto 运行任务",
         "/plan <task> - 仅生成执行计划，不直接修改代码",
         "/model [name|reset] - 查看或设置当前 chat 的模型",
+        "/sh <command> - 运行受限 Linux 命令 (默认关闭)",
         "/interrupt - 向 Codex CLI 发送 Ctrl+C",
         "/stop - 终止当前 chat 的 PTY 会话",
         "/cron_now - 立即触发一次日报推送",
@@ -92,6 +102,8 @@ export function registerHandlers({ bot, router, ptyManager, skills, scheduler })
         `command: ${status.command}`,
         `workspace root: ${status.workspaceRoot}`,
         `workdir: ${status.workdir}`,
+        `recent projects: ${ptyManager.getRecentProjects(ctx.chat.id).map((item) => item.relativePath).join(", ") || "."}`,
+        `safe shell: ${shellManager.isEnabled() ? `enabled (${shellManager.getAllowedCommands().length} prefixes)` : "disabled"}`,
         `mcp servers: ${status.mcpServers.length ? status.mcpServers.join(", ") : "none"}`
       ].join("\n")
     );
@@ -104,20 +116,21 @@ export function registerHandlers({ bot, router, ptyManager, skills, scheduler })
       [
         `workspace root: ${status.workspaceRoot}`,
         `current project: ${status.relativeWorkdir}`,
-        `workdir: ${status.workdir}`
+        `workdir: ${status.workdir}`,
+        `recent: ${ptyManager.getRecentProjects(ctx.chat.id).map((item) => item.relativePath).join(", ") || "."}`
       ].join("\n")
     );
   });
 
   bot.command("repo", async (ctx) => {
     const payload = extractCommandPayload(ctx.message.text, "repo");
+    const status = ptyManager.getStatus(ctx.chat.id);
+
     if (!payload) {
-      const status = ptyManager.getStatus(ctx.chat.id);
       const projects = ptyManager.listProjects();
-      const lines = projects.map((project) => {
-        const marker = project.path === status.workdir ? " <current>" : "";
-        return `- ${project.relativePath}${marker}`;
-      });
+      const recent = ptyManager.getRecentProjects(ctx.chat.id);
+      const lines = formatProjectLines(projects, status.workdir);
+      const recentLines = recent.map((project) => `- ${project.relativePath}`);
 
       await sendChunkedMarkdown(
         ctx,
@@ -126,14 +139,32 @@ export function registerHandlers({ bot, router, ptyManager, skills, scheduler })
           "Available projects:",
           ...(lines.length ? lines : ["- (no git repos found under workspace root)"]),
           "",
-          "Usage: /repo <name>"
+          "Recent projects:",
+          ...(recentLines.length ? recentLines : ["- ."]),
+          "",
+          "Usage: /repo <name> | /repo recent | /repo -"
+        ].join("\n")
+      );
+      return;
+    }
+
+    if (/^recent$/i.test(payload)) {
+      const recent = ptyManager.getRecentProjects(ctx.chat.id).map((project) => `- ${project.relativePath}`);
+      await sendChunkedMarkdown(
+        ctx,
+        [
+          "Recent projects:",
+          ...(recent.length ? recent : ["- ."]),
+          "",
+          "Use /repo <name> to switch."
         ].join("\n")
       );
       return;
     }
 
     try {
-      const result = ptyManager.switchWorkdir(ctx.chat.id, payload);
+      const result =
+        payload === "-" ? ptyManager.switchToPreviousWorkdir(ctx.chat.id) : ptyManager.switchWorkdir(ctx.chat.id, payload);
       await sendChunkedMarkdown(
         ctx,
         [
@@ -175,6 +206,62 @@ export function registerHandlers({ bot, router, ptyManager, skills, scheduler })
         `当前已有 ${result.activeMode || "unknown"} 任务在运行。请等待完成或先使用 /interrupt。`
       );
     }
+  });
+
+  bot.command("sh", async (ctx) => {
+    const command = extractCommandPayload(ctx.message.text, "sh");
+    if (!command) {
+      await sendChunkedMarkdown(ctx, "用法: /sh <command>");
+      return;
+    }
+
+    const status = ptyManager.getStatus(ctx.chat.id);
+    if (status.active) {
+      await sendChunkedMarkdown(ctx, "当前有 Codex 任务正在运行。先等待完成，或使用 /interrupt /new。");
+      return;
+    }
+
+    let validation;
+    try {
+      validation = shellManager.validateCommand(command);
+    } catch (error) {
+      await sendChunkedMarkdown(ctx, error.message);
+      return;
+    }
+
+    await sendChunkedMarkdown(
+      ctx,
+      [
+        "Running safe shell command...",
+        `workdir: ${status.workdir}`,
+        `command: ${validation.join(" ")}`
+      ].join("\n")
+    );
+
+    const result = await shellManager.execute({
+      chatId: ctx.chat.id,
+      rawCommand: command,
+      workdir: status.workdir
+    });
+
+    if (!result.started) {
+      await sendChunkedMarkdown(ctx, "当前 chat 已有一个 shell 命令在运行。");
+      return;
+    }
+
+    await sendChunkedMarkdown(
+      ctx,
+      [
+        `shell status: ${result.status}`,
+        `command: ${result.command}`,
+        `workdir: ${result.workdir}`,
+        `exitCode: ${result.exitCode === null ? "n/a" : result.exitCode}`,
+        `signal: ${result.signal || "none"}`,
+        "",
+        "output:",
+        result.output
+      ].join("\n")
+    );
   });
 
   bot.command("auto", async (ctx) => {

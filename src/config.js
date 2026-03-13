@@ -26,6 +26,14 @@ function parseNumber(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function parseBoolean(value, fallback = false) {
+  if (value === undefined) return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return fallback;
+}
+
 function parseArgs(value) {
   if (!value || !value.trim()) return [];
   const parts = value.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
@@ -89,6 +97,15 @@ export function loadConfig() {
     runnerCwd
   );
   const githubDefaultWorkdir = resolveDirectory(process.env.GITHUB_DEFAULT_WORKDIR, "GITHUB_DEFAULT_WORKDIR");
+  const rawShellAllowedCommands = parseJson(process.env.SHELL_ALLOWED_COMMANDS, []);
+  const shellAllowedCommands = Array.isArray(rawShellAllowedCommands)
+    ? rawShellAllowedCommands.map((value) => String(value).trim()).filter(Boolean)
+    : [];
+  const shellEnabled = parseBoolean(process.env.SHELL_ENABLED, false);
+
+  if (shellEnabled && !shellAllowedCommands.length) {
+    throw new Error("SHELL_ALLOWED_COMMANDS must contain at least one command prefix when SHELL_ENABLED=true.");
+  }
 
   return {
     app: {
@@ -112,6 +129,12 @@ export function loadConfig() {
     },
     reasoning: {
       mode: process.env.REASONING_RENDER_MODE === "quote" ? "quote" : "spoiler"
+    },
+    shell: {
+      enabled: shellEnabled,
+      allowedCommands: shellAllowedCommands,
+      timeoutMs: parseNumber(process.env.SHELL_TIMEOUT_MS, 20000),
+      maxOutputChars: parseNumber(process.env.SHELL_MAX_OUTPUT_CHARS, 12000)
     },
     cron: {
       dailySummary: process.env.CRON_DAILY_SUMMARY?.trim() || "0 9 * * *",

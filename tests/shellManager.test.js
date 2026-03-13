@@ -1,0 +1,64 @@
+import os from "node:os";
+import path from "node:path";
+import test from "node:test";
+import assert from "node:assert/strict";
+import { parseCommandLine } from "../src/runner/commandLine.js";
+import { ShellManager } from "../src/runner/shellManager.js";
+
+function createShellManager(overrides = {}) {
+  return new ShellManager({
+    config: {
+      shell: {
+        enabled: overrides.enabled ?? true,
+        allowedCommands: overrides.allowedCommands ?? ["pwd", "git status", "npm test"],
+        timeoutMs: overrides.timeoutMs ?? 5000,
+        maxOutputChars: overrides.maxOutputChars ?? 4000
+      }
+    }
+  });
+}
+
+test("parseCommandLine keeps quoted arguments together", () => {
+  assert.deepEqual(parseCommandLine("git commit -m 'feat: init repo'"), [
+    "git",
+    "commit",
+    "-m",
+    "feat: init repo"
+  ]);
+});
+
+test("shell manager rejects shell metacharacters and commands outside the allowlist", () => {
+  const manager = createShellManager();
+
+  assert.throws(() => manager.validateCommand("git status && pwd"), /不支持管道、重定向、命令替换或多条 shell 语句/);
+  assert.throws(() => manager.validateCommand("rm -rf ."), /命令不在白名单中/);
+});
+
+test("shell manager executes an allowed command without invoking a shell", async () => {
+  const manager = createShellManager({
+    allowedCommands: ["pwd"]
+  });
+  const workdir = path.join(os.tmpdir());
+
+  const result = await manager.execute({
+    chatId: 1,
+    rawCommand: "pwd",
+    workdir
+  });
+
+  assert.equal(result.started, true);
+  assert.equal(result.status, "passed");
+  assert.equal(result.workdir, workdir);
+  assert.match(result.output, new RegExp(workdir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+});
+
+test("shell manager reports disabled mode before execution", () => {
+  const manager = createShellManager({
+    enabled: false
+  });
+
+  assert.throws(
+    () => manager.validateCommand("pwd"),
+    /受限 Shell 功能未启用/
+  );
+});

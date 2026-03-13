@@ -51,6 +51,13 @@ WORKSPACE_ROOT=.
 CODEX_WORKDIR=.
 ```
 
+Optional safe shell:
+
+```bash
+SHELL_ENABLED=true
+SHELL_ALLOWED_COMMANDS=["pwd","ls","git status","git diff --stat","npm test","npm run check"]
+```
+
 ### Run
 
 ```bash
@@ -114,11 +121,14 @@ General:
 - `/pwd` - show the current project directory for this chat
 - `/repo` - list switchable git projects under `WORKSPACE_ROOT`
 - `/repo <name>` - switch the current chat to another project
+- `/repo recent` - show recent projects for the current chat
+- `/repo -` - switch back to the previous project
 - `/new` - close current session and start fresh on the next message
 - `/exec <task>` - force a one-off `codex exec`
 - `/auto <task>` - force a one-off `codex exec --full-auto`
 - `/plan <task>` - ask Codex for a plan only, without direct file modification intent
 - `/model [name|reset]` - show or set the model override for the current chat
+- `/sh <command>` - run a safe allowlisted Linux command in the current project (disabled by default)
 - `/interrupt` - send `Ctrl+C` to current PTY session
 - `/stop` - terminate current PTY session
 - `/cron_now` - trigger daily summary immediately
@@ -144,6 +154,7 @@ Telegram adaptation notes:
 - `/new` is implemented by the bot and resets the current chat session
 - `/status` is implemented by the bot and reports local runtime state
 - `/repo` is implemented by the bot and switches the per-chat working directory inside `WORKSPACE_ROOT`
+- `/sh` is implemented by the bot, never invokes a shell interpreter, and only accepts configured command prefixes
 - `/plan` translates to a planning-only prompt instead of passing a raw `/plan` slash command to Codex
 
 ## Streaming and Reasoning Visualization
@@ -185,6 +196,10 @@ Common options:
 CODEX_COMMAND=codex
 CODEX_ARGS=
 WORKSPACE_ROOT=/Users/yourname/projects
+SHELL_ENABLED=false
+SHELL_ALLOWED_COMMANDS=["pwd","ls","git status","git diff --stat","npm test","npm run check"]
+SHELL_TIMEOUT_MS=20000
+SHELL_MAX_OUTPUT_CHARS=12000
 STREAM_THROTTLE_MS=1200
 STREAM_BUFFER_CHARS=120000
 REASONING_RENDER_MODE=spoiler
@@ -216,7 +231,22 @@ E2E_TEST_COMMAND=npx playwright test --reporter=line
 - Run bot under a restricted OS user in production
 - Keep `CODEX_WORKDIR` scoped to a safe workspace root
 - Keep `WORKSPACE_ROOT` limited to a parent directory that only contains projects you want the bot to access
+- Keep `/sh` disabled unless you need it; when enabled, only expose read-only or narrowly scoped command prefixes
+- `/sh` uses `spawn(..., { shell: false })`, rejects pipes/redirection/subshell syntax, and runs inside the current project directory
 - Prefer least-privilege GitHub PAT
+
+## Should You Enable `/sh`?
+
+Usually not for general users. Codex itself can run commands as part of a coding task, so `/sh` is not required for normal code-edit workflows.
+
+It is useful when you need deterministic operator actions from Telegram, such as:
+
+- `pwd`
+- `git status`
+- `git diff --stat`
+- `npm test`
+
+Treat it as an admin-only ops channel, not a general-purpose remote shell.
 
 ## Troubleshooting
 

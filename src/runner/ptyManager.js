@@ -31,6 +31,7 @@ export class PtyManager {
     const state = {
       preferredModel: null,
       currentWorkdir: this.config.runner.cwd,
+      recentWorkdirs: [this.config.runner.cwd],
       ptySupported: null,
       lastMode: null,
       lastExitCode: null,
@@ -59,6 +60,11 @@ export class PtyManager {
     const workdir = this.getWorkdir(chatId);
     const relative = path.relative(this.config.workspace.root, workdir);
     return relative || ".";
+  }
+
+  rememberWorkdir(state, workdir) {
+    const history = [workdir, ...(state.recentWorkdirs || []).filter((item) => item !== workdir)];
+    state.recentWorkdirs = history.slice(0, 6);
   }
 
   isInsideWorkspaceRoot(candidate) {
@@ -98,6 +104,16 @@ export class PtyManager {
     return projects.sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  getRecentProjects(chatId) {
+    const state = this.ensureChatState(chatId);
+    return (state.recentWorkdirs || [])
+      .filter((workdir) => fs.existsSync(workdir) && this.isInsideWorkspaceRoot(workdir))
+      .map((workdir) => ({
+        path: workdir,
+        relativePath: path.relative(this.config.workspace.root, workdir) || "."
+      }));
+  }
+
   switchWorkdir(chatId, targetName) {
     const key = String(chatId);
     const requested = String(targetName || "").trim();
@@ -128,12 +144,25 @@ export class PtyManager {
 
     const state = this.ensureChatState(key);
     state.currentWorkdir = targetPath;
+    this.rememberWorkdir(state, targetPath);
     this.closeSession(key);
 
     return {
       workdir: targetPath,
       relativePath: path.relative(root, targetPath) || "."
     };
+  }
+
+  switchToPreviousWorkdir(chatId) {
+    const key = String(chatId);
+    const state = this.ensureChatState(key);
+    const previous = (state.recentWorkdirs || []).find((workdir) => workdir !== state.currentWorkdir);
+
+    if (!previous) {
+      throw new Error("当前 chat 没有可回退的上一个项目。");
+    }
+
+    return this.switchWorkdir(key, previous);
   }
 
   getExecArgs(chatId, prompt, options = {}) {

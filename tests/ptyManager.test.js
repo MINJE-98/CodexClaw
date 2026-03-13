@@ -101,3 +101,34 @@ test("pty manager switches workdir within workspace root and resets session", ()
   assert.equal(manager.getStatus(99).workdir, projectB);
   assert.equal(manager.getStatus(99).relativeWorkdir, "project-b");
 });
+
+test("pty manager tracks recent projects and can switch back to the previous workdir", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "claws-history-"));
+  const projectA = path.join(root, "project-a");
+  const projectB = path.join(root, "project-b");
+  const projectC = path.join(root, "project-c");
+  fs.mkdirSync(projectA, { recursive: true });
+  fs.mkdirSync(projectB, { recursive: true });
+  fs.mkdirSync(projectC, { recursive: true });
+  fs.mkdirSync(path.join(projectA, ".git"));
+  fs.mkdirSync(path.join(projectB, ".git"));
+  fs.mkdirSync(path.join(projectC, ".git"));
+
+  const manager = createManager({
+    workspaceRoot: root,
+    runnerCwd: projectA
+  });
+
+  manager.switchWorkdir(77, "project-b");
+  manager.switchWorkdir(77, "project-c");
+
+  assert.deepEqual(
+    manager.getRecentProjects(77).map((project) => project.relativePath),
+    ["project-c", "project-b", "project-a"]
+  );
+
+  const previous = manager.switchToPreviousWorkdir(77);
+
+  assert.equal(previous.relativePath, "project-b");
+  assert.equal(manager.getStatus(77).relativeWorkdir, "project-b");
+});

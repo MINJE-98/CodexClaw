@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import process from "node:process";
 import simpleGit from "simple-git";
 import { Octokit } from "@octokit/rest";
+import { parseCommandLine } from "../../runner/commandLine.js";
 
 function buildAutoCommitMessage(status) {
   const fileCount = status.files.length;
@@ -194,6 +195,12 @@ export class GitHubSkill {
   async startTests(workdir) {
     const jobId = `job-${Date.now()}`;
     const command = this.config.github.e2eCommand;
+    const argv = parseCommandLine(command);
+    if (!argv.length) {
+      return { text: "E2E_TEST_COMMAND 为空，无法启动测试。" };
+    }
+
+    const [binary, ...args] = argv;
     const job = {
       jobId,
       status: "running",
@@ -205,10 +212,10 @@ export class GitHubSkill {
       output: ""
     };
 
-    const child = spawn(command, {
+    const child = spawn(binary, args, {
       cwd: workdir || this.config.github.defaultWorkdir,
       env: process.env,
-      shell: true
+      shell: false
     });
 
     const appendOutput = (chunk) => {

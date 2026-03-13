@@ -7,6 +7,7 @@ import { McpClient } from "./orchestrator/mcpClient.js";
 import { McpSkill } from "./orchestrator/skills/mcpSkill.js";
 import { GitHubSkill } from "./orchestrator/skills/githubSkill.js";
 import { PtyManager } from "./runner/ptyManager.js";
+import { ShellManager } from "./runner/shellManager.js";
 import { Scheduler } from "./cron/scheduler.js";
 
 const config = loadConfig();
@@ -36,6 +37,9 @@ const ptyManager = new PtyManager({
   bot,
   config
 });
+const shellManager = new ShellManager({
+  config
+});
 
 const scheduler = new Scheduler({
   bot,
@@ -47,6 +51,7 @@ registerHandlers({
   bot,
   router,
   ptyManager,
+  shellManager,
   skills,
   scheduler
 });
