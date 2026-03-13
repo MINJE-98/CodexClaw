@@ -1,5 +1,6 @@
 import { Telegraf } from "telegraf";
 import { loadConfig } from "./config.js";
+import { RuntimeStateStore } from "./runtimeStateStore.js";
 import { createAuthMiddleware } from "./bot/middleware.js";
 import { registerHandlers } from "./bot/handlers.js";
 import { Router } from "./orchestrator/router.js";
@@ -15,10 +16,25 @@ const config = loadConfig();
 const bot = new Telegraf(config.telegram.botToken, {
   handlerTimeout: 120000
 });
+const stateStore = new RuntimeStateStore({ config });
+let mcpClient;
+let skillRegistry;
+
+async function saveRuntimeState() {
+  if (!mcpClient || !skillRegistry) return;
+  await stateStore.save({
+    mcp: mcpClient.exportState(),
+    skills: skillRegistry.exportState()
+  });
+}
 
 bot.use(createAuthMiddleware(config));
 
-const mcpClient = new McpClient(config);
+const runtimeState = await stateStore.load();
+mcpClient = new McpClient(config, {
+  onChange: () => void saveRuntimeState()
+});
+mcpClient.restoreState(runtimeState.mcp);
 await mcpClient.connectAll().catch((error) => {
   console.error("[mcp] connect failed:", error.message);
 });
@@ -29,7 +45,10 @@ const skills = {
   github: githubSkill,
   mcp: mcpSkill
 };
-const skillRegistry = new SkillRegistry(skills);
+skillRegistry = new SkillRegistry(skills, {
+  onChange: () => void saveRuntimeState()
+});
+skillRegistry.restoreState(runtimeState.skills);
 
 const router = new Router({
   skills,

@@ -1,7 +1,8 @@
 export class SkillRegistry {
-  constructor(skills = {}) {
+  constructor(skills = {}, { onChange } = {}) {
     this.skillNames = Object.keys(skills).sort();
     this.chatStates = new Map();
+    this.onChange = onChange;
   }
 
   normalizeSkillName(name) {
@@ -47,6 +48,7 @@ export class SkillRegistry {
     const normalized = this.ensureKnownSkill(name);
     const state = this.ensureChatState(chatId);
     state.enabledSkills.add(normalized);
+    this.onChange?.(this.exportState());
     return this.list(chatId);
   }
 
@@ -54,6 +56,39 @@ export class SkillRegistry {
     const normalized = this.ensureKnownSkill(name);
     const state = this.ensureChatState(chatId);
     state.enabledSkills.delete(normalized);
+    this.onChange?.(this.exportState());
     return this.list(chatId);
+  }
+
+  exportState() {
+    const chats = {};
+    for (const [chatId, state] of this.chatStates.entries()) {
+      chats[chatId] = {
+        enabledSkills: [...state.enabledSkills].sort()
+      };
+    }
+
+    return {
+      chats
+    };
+  }
+
+  restoreState(snapshot = {}) {
+    const chats = snapshot?.chats;
+    if (!chats || typeof chats !== "object") return;
+
+    this.chatStates.clear();
+
+    for (const [chatId, state] of Object.entries(chats)) {
+      const enabledSkills = Array.isArray(state?.enabledSkills)
+        ? state.enabledSkills
+            .map((skill) => this.normalizeSkillName(skill))
+            .filter((skill) => this.skillNames.includes(skill))
+        : this.skillNames;
+
+      this.chatStates.set(String(chatId), {
+        enabledSkills: new Set(enabledSkills)
+      });
+    }
   }
 }

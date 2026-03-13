@@ -36,3 +36,21 @@ test("skill registry rejects unknown skills", () => {
 
   assert.throws(() => registry.disable(1, "unknown"), /Unknown skill/);
 });
+
+test("skill registry exports and restores chat state", () => {
+  const registry = new SkillRegistry({
+    github: {},
+    mcp: {}
+  });
+  registry.disable(1, "github");
+
+  const snapshot = registry.exportState();
+  const restored = new SkillRegistry({
+    github: {},
+    mcp: {}
+  });
+  restored.restoreState(snapshot);
+
+  assert.equal(restored.isEnabled(1, "github"), false);
+  assert.equal(restored.isEnabled(1, "mcp"), true);
+});

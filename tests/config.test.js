@@ -1,11 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import os from "node:os";
+import path from "node:path";
 import { loadConfig } from "../src/config.js";
 
 const ENV_KEYS = [
   "BOT_TOKEN",
   "ALLOWED_USER_IDS",
   "PROACTIVE_USER_IDS",
+  "STATE_FILE",
   "CODEX_COMMAND",
   "CODEX_ARGS",
   "CODEX_WORKDIR",
@@ -63,11 +66,13 @@ function withMutedWarnings(fn) {
 }
 
 test("loadConfig parses env values into runtime config", () => {
+  const stateFile = path.join(os.tmpdir(), "codex-telegram-claws-runtime-state.json");
   const config = withEnv(
     {
       BOT_TOKEN: "telegram-token",
       ALLOWED_USER_IDS: "1, 2",
       PROACTIVE_USER_IDS: "2",
+      STATE_FILE: stateFile,
       CODEX_COMMAND: "codex",
       CODEX_ARGS: "--approval-mode auto \"--model gpt-5\"",
       CODEX_WORKDIR: ".",
@@ -94,6 +99,7 @@ test("loadConfig parses env values into runtime config", () => {
   );
 
   assert.equal(config.telegram.botToken, "telegram-token");
+  assert.equal(config.app.stateFile, stateFile);
   assert.deepEqual(config.telegram.allowedUserIds, ["1", "2"]);
   assert.deepEqual(config.telegram.proactiveUserIds, ["2"]);
   assert.equal(config.runner.command, "codex");

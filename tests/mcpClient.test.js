@@ -92,3 +92,16 @@ test("mcp client reconnect refreshes a known enabled server", async () => {
   assert.deepEqual(closes, ["context7"]);
   assert.equal(connectCalls, 1);
 });
+
+test("mcp client exports and restores disabled server state", () => {
+  const client = createClient();
+  client.restoreState({
+    disabledServers: ["sequential-thinking"]
+  });
+
+  assert.deepEqual(client.exportState(), {
+    disabledServers: ["sequential-thinking"]
+  });
+  assert.equal(client.isServerEnabled("sequential-thinking"), false);
+  assert.equal(client.isServerEnabled("context7"), true);
+});

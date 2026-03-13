@@ -25,10 +25,11 @@ function normalizeToolContent(result) {
 }
 
 export class McpClient {
-  constructor(config) {
+  constructor(config, { onChange } = {}) {
     this.config = config;
     this.connections = new Map();
     this.disabledServers = new Set();
+    this.onChange = onChange;
   }
 
   hasServers() {
@@ -147,6 +148,7 @@ export class McpClient {
 
     this.disabledServers.add(serverName);
     await this.disconnectServer(serverName);
+    this.onChange?.(this.exportState());
     return this.listServers().find((server) => server.name === serverName) || null;
   }
 
@@ -157,7 +159,22 @@ export class McpClient {
 
     this.disabledServers.delete(serverName);
     await this.connectServerByName(serverName);
+    this.onChange?.(this.exportState());
     return this.listServers().find((server) => server.name === serverName) || null;
+  }
+
+  exportState() {
+    return {
+      disabledServers: [...this.disabledServers].sort()
+    };
+  }
+
+  restoreState(snapshot = {}) {
+    const disabledServers = Array.isArray(snapshot?.disabledServers)
+      ? snapshot.disabledServers.filter((serverName) => this.hasServer(serverName))
+      : [];
+
+    this.disabledServers = new Set(disabledServers);
   }
 
   async listTools(serverName) {

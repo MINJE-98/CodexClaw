@@ -47,6 +47,7 @@ Minimum required:
 ```bash
 BOT_TOKEN=123456789:telegram-token
 ALLOWED_USER_IDS=123456789
+STATE_FILE=.codex-telegram-claws-state.json
 WORKSPACE_ROOT=.
 CODEX_WORKDIR=.
 ```
@@ -201,6 +202,7 @@ Required:
 ```bash
 BOT_TOKEN=...
 ALLOWED_USER_IDS=123456789,987654321
+STATE_FILE=.codex-telegram-claws-state.json
 WORKSPACE_ROOT=.
 CODEX_WORKDIR=.
 ```
@@ -211,6 +213,7 @@ Common options:
 CODEX_COMMAND=codex
 CODEX_ARGS=
 WORKSPACE_ROOT=/Users/yourname/projects
+STATE_FILE=/path/to/codex-telegram-claws-state.json
 SHELL_ENABLED=false
 SHELL_READ_ONLY=true
 SHELL_ALLOWED_COMMANDS=["pwd","ls","git status","git diff --stat","npm test","npm run check"]
@@ -274,6 +277,7 @@ Telegram can manage runtime usage of Bot-side MCP and skills, but not install ar
 - MCP servers are process-level runtime resources: list, inspect, reconnect, enable, disable
 - Skills are chat-level routing switches: each chat can enable or disable `github` and `mcp` independently
 - Codex's own MCP remains separate and is not managed through these bot commands
+- Runtime state is persisted to `STATE_FILE`, so `/mcp enable|disable` and `/skill on|off` survive bot restarts
 
 ## Troubleshooting
 

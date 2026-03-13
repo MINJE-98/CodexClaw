@@ -64,6 +64,17 @@ function resolveDirectory(value, name, fallback = process.cwd()) {
   return resolvedFallback;
 }
 
+function resolveFile(value, fallback) {
+  const candidate = path.resolve(value || fallback);
+  const directory = path.dirname(candidate);
+
+  if (!fs.existsSync(directory)) {
+    fs.mkdirSync(directory, { recursive: true });
+  }
+
+  return candidate;
+}
+
 function normalizeMcpServer(raw, index) {
   if (!raw || typeof raw !== "object") return null;
   if (!raw.name || !raw.command) {
@@ -113,7 +124,11 @@ export function loadConfig() {
 
   return {
     app: {
-      name: "codex-telegram-claws"
+      name: "codex-telegram-claws",
+      stateFile: resolveFile(
+        process.env.STATE_FILE,
+        path.join(process.cwd(), ".codex-telegram-claws-state.json")
+      )
     },
     workspace: {
       root: workspaceRoot
