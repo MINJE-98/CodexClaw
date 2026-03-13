@@ -1,195 +1,209 @@
-# codex-telegram-claws
+# Codex Telegram Claws
 
-`codex-telegram-claws` 是一个 Node.js (ESM) Telegram 超级代理。它在宿主机使用 `node-pty` 安全托管 `@openai/codex` CLI，并提供智能路由、MCP/Subagent 技能、推理流可视化、GitHub 自动化和定时主动任务。
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js 20+](https://img.shields.io/badge/node-20%2B-green.svg)](https://nodejs.org/en/download/current)
 
-对标参考项目：`RichardAtCT/claude-code-telegram`，但本项目专注 Codex CLI + MCP + Subagent 组合。
+A Telegram bot that gives you remote access to `@openai/codex` through a PTY-backed Node.js runtime.  
+It is strictly inspired by `RichardAtCT/claude-code-telegram`, but this project is implemented for Codex CLI + MCP + Subagent routing.
 
-## 核心特性
+## What Is This?
 
-- PTY 托管：强制 TTY 场景运行 CLI，避免无终端卡死。
-- Agentic Routing：将消息分流到 Codex 链路或 Skill 链路（MCP/GitHub）。
-- MCP Client：以 stdio 方式连接本机 MCP Server，供 Subagent/通用任务使用。
-- MCP 去重策略：编码任务不再由 Bot 侧预注入 MCP 上下文，避免与 Codex 自身 MCP 重复调用。
-- Reasoning Stream：解析 `<think>...</think>` 并用 Spoiler 或引用渲染。
-- 丝滑输出：节流 `editMessageText`，长文自动切片，MarkdownV2 防崩。
-- Zero Trust：白名单用户鉴权，非授权请求静默丢弃。
-- GitHub Skill：自然语言驱动 commit/push、创建 repo、触发和查看测试。
-- Cron 主动推送：每日发送“昨日代码变更摘要”。
+This bot connects Telegram to Codex CLI and routes tasks to the right execution surface:
 
-## 架构总览
+- **Coding tasks** -> Codex CLI in `node-pty` (real TTY, stable interactive behavior)
+- **General/tooling tasks** -> Subagents (`MCP Skill`, `GitHub Skill`)
+- **Proactive automation** -> Cron scheduler for daily summaries and push notifications
 
-```text
-Telegram Message
-  -> bot/handlers.js
-  -> orchestrator/router.js
-     -> runner/ptyManager.js (编码任务 -> Codex CLI，使用 Codex 自身 MCP)
-     -> orchestrator/skills/*.js (通用任务 -> MCP/GitHub Subagent)
-  -> bot/formatter.js
-  -> Telegram editMessageText/sendMessage
-```
+Key design goals:
 
-关键模块：
+- Keep Codex interactive sessions smooth and stream-safe on Telegram
+- Enforce zero-trust access with whitelist-only users
+- Avoid duplicate MCP calls by separating Codex MCP vs Bot MCP responsibilities
 
-- `src/bot/`: 鉴权、中间件、格式化、Telegram 交互。
-- `src/orchestrator/`: 路由决策、MCP 客户端、技能调度。
-- `src/runner/`: PTY 生命周期、流式缓冲、节流刷新。
-- `src/cron/`: 定时任务注册与主动消息推送。
+## Quick Start
 
-## 目录结构
+### Prerequisites
 
-```text
-codex-telegram-claws/
-├── package.json
-├── .env.example
-├── src/
-│   ├── index.js
-│   ├── config.js
-│   ├── bot/
-│   │   ├── middleware.js
-│   │   ├── formatter.js
-│   │   └── handlers.js
-│   ├── orchestrator/
-│   │   ├── router.js
-│   │   ├── mcpClient.js
-│   │   └── skills/
-│   │       ├── githubSkill.js
-│   │       └── mcpSkill.js
-│   ├── runner/
-│   │   └── ptyManager.js
-│   └── cron/
-│       └── scheduler.js
-└── README.md
-```
+- Node.js 20+ -- https://nodejs.org/en/download/current
+- Codex CLI -- https://github.com/openai/codex
+- Telegram Bot Token -- from `@BotFather`
 
-## 前置条件
-
-- Node.js: https://nodejs.org/en/download/current
-- Codex CLI: https://github.com/openai/codex
-- Telegram Bot Token: 通过 `@BotFather` 获取
-- 可选：GitHub PAT（用于创建仓库与自动化操作）
-
-## 快速开始
+### Install
 
 ```bash
+git clone https://github.com/MackDing/codex-telegram-claws.git
+cd codex-telegram-claws
 npm install
+```
+
+### Configure
+
+```bash
 cp .env.example .env
-# 至少配置 BOT_TOKEN, ALLOWED_USER_IDS, CODEX_WORKDIR
+```
+
+Minimum required:
+
+```bash
+BOT_TOKEN=123456789:telegram-token
+ALLOWED_USER_IDS=123456789
+CODEX_WORKDIR=/absolute/path/to/your/workspace
+```
+
+### Run
+
+```bash
 npm run start
 ```
 
-开发与检查：
+Development mode:
 
 ```bash
 npm run dev
+```
+
+Sanity check:
+
+```bash
 npm run check
+npm test
 ```
 
-## 环境变量说明
+## Architecture
 
-必填：
-
-- `BOT_TOKEN`: Telegram Bot Token。
-- `ALLOWED_USER_IDS`: 白名单用户 ID，逗号分隔。
-- `CODEX_WORKDIR`: Codex CLI 工作目录（建议受限目录）。
-
-常用可选：
-
-- `CODEX_COMMAND`, `CODEX_ARGS`: Codex 启动命令与参数。
-- `STREAM_THROTTLE_MS`: 1-1.5 秒最佳（建议 `1200`）。
-- `REASONING_RENDER_MODE`: `spoiler` 或 `quote`。
-- `CRON_DAILY_SUMMARY`, `CRON_TIMEZONE`: Cron 表达式与时区。
-- `MCP_SERVERS`: JSON 数组，定义 MCP stdio server。
-- `GITHUB_TOKEN`: GitHub API Token。
-- `GITHUB_DEFAULT_WORKDIR`: Git 技能本地目录。
-- `E2E_TEST_COMMAND`: 测试命令（默认 Playwright）。
-
-MCP 示例：
-
-```env
-MCP_SERVERS=[{"name":"filesystem","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","/abs/path/workspace"]}]
+```text
+Telegram Message
+  -> src/bot/handlers.js
+  -> src/orchestrator/router.js
+     -> src/runner/ptyManager.js        (coding tasks -> Codex CLI)
+     -> src/orchestrator/skills/*.js    (general tasks -> MCP/GitHub subagents)
+  -> src/bot/formatter.js
+  -> Telegram sendMessage/editMessageText
 ```
 
-## 路由与职责边界（避免冲突）
+Core modules:
 
-当前策略：
+- `src/index.js`: bootstrap and lifecycle
+- `src/config.js`: env parsing and validation
+- `src/bot/`: auth middleware, formatting, command handlers
+- `src/orchestrator/`: routing + MCP client + skills
+- `src/runner/ptyManager.js`: Codex PTY process + streaming
+- `src/cron/scheduler.js`: proactive scheduled push
 
-- 编码任务：直接路由到 Codex CLI，不做 Bot 侧 MCP 预取。
-- 通用任务：路由到 MCP Skill（或 GitHub Skill）。
-- 显式 MCP 指令：仅 `/mcp ...` 触发 Bot 侧 MCP 调用。
+## Routing and MCP Boundary
 
-这样做的目的：
+To avoid duplicated context fetch:
 
-- 避免同一请求在 Bot MCP 与 Codex MCP 被重复查询。
-- 降低时延、配额消耗和上下文不一致风险。
-- 让“编码执行面”（Codex）与“控制面技能”（Subagent/Cron）解耦。
+- **Coding requests** are sent directly to Codex CLI (Codex can use its own MCP stack)
+- **Bot-side MCP** is only used by `/mcp ...` and general subagent requests
 
-## Telegram 指令与技能
+This prevents:
 
-基础命令：
+- duplicate queries against the same MCP server
+- extra latency/token/tool cost
+- context drift from two independent MCP execution surfaces
 
-- `/help`: 查看帮助。
-- `/interrupt`: 向 PTY 发送 `Ctrl+C`。
-- `/stop`: 结束当前 chat 的 PTY 会话。
-- `/cron_now`: 手动触发一次日报推送。
+## Commands
 
-MCP Skill：
+General:
+
+- `/start` - bootstrap message
+- `/help` - command summary
+- `/interrupt` - send `Ctrl+C` to current PTY session
+- `/stop` - terminate current PTY session
+- `/cron_now` - trigger daily summary immediately
+
+MCP skill:
 
 - `/mcp tools <server>`
 - `/mcp call <server> <tool> {"query":"..."}`
 
-GitHub Skill：
+GitHub skill:
 
-- `/gh commit "feat: xxx"` 自动 `git add .` + commit + push。
-- `/gh push` 仅推送当前分支。
-- `/gh create repo my-new-repo` 在当前账号创建仓库并关联 origin。
-- `/gh run tests` 触发测试任务。
-- `/gh test status <jobId>` 查询测试状态与输出尾部。
+- `/gh commit "feat: message"` -> `git add .` + commit + push
+- `/gh push` -> push current branch
+- `/gh create repo my-new-repo` -> create repo and bind origin
+- `/gh run tests` -> launch test job
+- `/gh test status <jobId>` -> read test status/output tail
 
-## 推理流可视化
+## Streaming and Reasoning Visualization
 
-当 Codex CLI 输出包含 `<think>...</think>` 时，`formatter.js` 会抽取并渲染：
+PTY output is streamed with throttled `editMessageText` updates.
 
-- `spoiler` 模式：`||...||`（默认，点击展开）。
-- `quote` 模式：引用块展示。
+- Throttle: controlled by `STREAM_THROTTLE_MS` (default `1200`)
+- Long output: auto-chunked to Telegram-safe message sizes
+- MarkdownV2: escaped to avoid parse failures
+- Reasoning tags: `<think>...</think>` extracted and rendered as:
+  - spoiler (`||...||`, default)
+  - quote block (if `REASONING_RENDER_MODE=quote`)
 
-普通输出与推理输出会分段显示，避免污染代码可读性。
+## Event-Driven Automation
 
-## 定时任务设计
+`node-cron` is built in for proactive behavior:
 
-默认 Cron：每天 09:00（`CRON_DAILY_SUMMARY`）统计昨日提交数据并主动推送给 `PROACTIVE_USER_IDS`。
+- Daily summary schedule: `CRON_DAILY_SUMMARY` (default `0 9 * * *`)
+- Target users: `PROACTIVE_USER_IDS`
+- Summary includes commit count, changed files, insertions/deletions, and recent commits
 
-摘要包含：
+Use `/cron_now` for manual trigger during debugging.
 
-- 提交数量
-- 改动文件数 / 插入 / 删除
-- 最近提交列表（最多 8 条）
+## Configuration
 
-## Subagent / Cron 与 Codex 的关系
+Required:
 
-默认不会产生逻辑冲突，前提是遵守职责边界：
+```bash
+BOT_TOKEN=...
+ALLOWED_USER_IDS=123456789,987654321
+CODEX_WORKDIR=/abs/path/workspace
+```
 
-- Codex 负责“编码对话与执行”。
-- Subagent（MCP/GitHub）负责“外部工具调用和控制动作”。
-- Cron 负责“计划触发和状态通知”。
+Common options:
 
-可能冲突点与建议：
+```bash
+CODEX_COMMAND=codex
+CODEX_ARGS=
+STREAM_THROTTLE_MS=1200
+STREAM_BUFFER_CHARS=120000
+REASONING_RENDER_MODE=spoiler
 
-- 并发写仓库：Cron 与 Codex 同时操作同一目录时，建议将 Cron 任务限制为只读汇总。
-- 指令重入：对高风险指令（push/create repo）建议增加确认步骤或白名单命令。
-- 上下文漂移：尽量让同一任务只由一个执行面处理，不要在同一请求里混用双 MCP。
+CRON_DAILY_SUMMARY=0 9 * * *
+CRON_TIMEZONE=Asia/Shanghai
+PROACTIVE_USER_IDS=123456789
+```
 
-## 安全基线
+MCP:
 
-- 白名单鉴权必须开启，拒绝公开 Bot。
-- 不提交 `.env`、Token、会话数据。
-- 建议使用最小权限 PAT，限制 repo scope。
-- 建议在生产使用独立系统用户运行并限制工作目录权限。
+```bash
+MCP_SERVERS=[{"name":"filesystem","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","/abs/path/workspace"]}]
+```
 
-## 常见问题排查
+GitHub:
 
-- Bot 不响应：检查 `BOT_TOKEN` 与 `ALLOWED_USER_IDS` 是否正确。
-- Codex 无输出：检查 `CODEX_COMMAND` 是否可执行，`CODEX_WORKDIR` 是否存在。
-- Markdown 报错：确认输出是否超长，已内置切片与转义，但极端字符流仍建议缩短上下文。
-- GitHub 创建仓库失败：检查 `GITHUB_TOKEN` scope 与账号配额。
-- MCP 调用失败：先 `/mcp tools <server>` 验证服务连通与工具列表。
-- 觉得 MCP 重复调用：确认编码请求是否直接走 Codex；Bot 侧 MCP 仅在 `/mcp` 或通用任务触发。
+```bash
+GITHUB_TOKEN=ghp_xxx
+GITHUB_DEFAULT_WORKDIR=/abs/path/workspace
+GITHUB_DEFAULT_BRANCH=main
+E2E_TEST_COMMAND=npx playwright test --reporter=line
+```
+
+## Security Baseline
+
+- Whitelist-only access (`ALLOWED_USER_IDS`) is mandatory
+- Do not commit `.env`, tokens, or session artifacts
+- Run bot under a restricted OS user in production
+- Keep `CODEX_WORKDIR` scoped to a safe workspace root
+- Prefer least-privilege GitHub PAT
+
+## Troubleshooting
+
+- **Bot not responding**: verify `BOT_TOKEN` and `ALLOWED_USER_IDS`
+- **Codex not producing output**: verify `CODEX_COMMAND` and `CODEX_WORKDIR`
+- **Markdown parse errors**: reduce output size/context; check special characters in tool output
+- **MCP failures**: run `/mcp tools <server>` first to validate server availability
+- **GitHub API failures**: verify `GITHUB_TOKEN` scope (`repo`) and account permissions
+- **Duplicate MCP suspicion**: ensure coding tasks are routed directly to Codex, and bot MCP is used only for `/mcp` or general tasks
+
+## Reference
+
+- Inspired by: https://github.com/RichardAtCT/claude-code-telegram
+- This implementation: Codex-first Node.js stack (`telegraf`, `node-pty`, `node-cron`, MCP SDK)
