@@ -83,6 +83,7 @@ npm run lint
 npm run format:check
 npm test
 npm run healthcheck
+npm run healthcheck:live
 ```
 
 ## Development Commands
@@ -98,6 +99,7 @@ npm run healthcheck
 - `npm test` - run the full test suite
 - `npm run healthcheck` - static runtime readiness check
 - `npm run healthcheck:strict` - stricter production-oriented health check
+- `npm run healthcheck:live` - live Codex + Telegram probe against the configured backend and bot token
 - `npm run telegram:smoke` - live Telegram API smoke test when a real bot token is available
 
 ## Architecture
@@ -369,7 +371,7 @@ Recommended local release gate:
 
 ```bash
 npm run ci
-node scripts/healthcheck.js --strict --telegram-live
+node scripts/healthcheck.js --strict --telegram-live --codex-live
 ```
 
 Release references:

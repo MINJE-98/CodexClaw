@@ -17,8 +17,15 @@ function createConfig(root) {
       botToken: "dummy-token"
     },
     runner: {
+      backend: "sdk",
       command: "node",
-      cwd: root
+      args: [],
+      cwd: root,
+      sdkConfig: {},
+      sdkThreadOptions: {
+        skipGitRepoCheck: true,
+        additionalDirectories: []
+      }
     },
     github: {
       defaultWorkdir: root
@@ -77,6 +84,56 @@ test("runHealthcheck fails when the configured command is missing in strict mode
   assert.equal(result.ok, false);
   assert.equal(
     result.checks.some((check) => check.status === "fail"),
+    true
+  );
+});
+
+test("runHealthcheck reports a passing live Codex probe when the backend responds", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "claws-health-"));
+  const config = createConfig(root);
+
+  const result = await runHealthcheck(config, {
+    env: process.env,
+    codexLiveCheck: true,
+    codexLiveRunner: async () => ({
+      backend: "sdk",
+      threadId: "thread-123",
+      output: "HEALTHCHECK_OK"
+    })
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(
+    result.checks.some(
+      (check) =>
+        check.name === "codex live" &&
+        check.status === "pass" &&
+        check.detail.includes("HEALTHCHECK_OK")
+    ),
+    true
+  );
+});
+
+test("runHealthcheck reports a failing live Codex probe when the backend check fails", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "claws-health-"));
+  const config = createConfig(root);
+
+  const result = await runHealthcheck(config, {
+    env: process.env,
+    codexLiveCheck: true,
+    codexLiveRunner: async () => {
+      throw new Error("simulated codex failure");
+    }
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(
+    result.checks.some(
+      (check) =>
+        check.name === "codex live" &&
+        check.status === "fail" &&
+        check.detail.includes("simulated codex failure")
+    ),
     true
   );
 });

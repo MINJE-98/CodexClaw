@@ -4,6 +4,7 @@ import { runHealthcheck } from "../src/ops/healthcheck.js";
 
 const strict = process.argv.includes("--strict");
 const telegramLiveCheck = process.argv.includes("--telegram-live");
+const codexLiveCheck = process.argv.includes("--codex-live");
 
 let config;
 try {
@@ -15,7 +16,8 @@ try {
 
 const result = await runHealthcheck(config, {
   strict,
-  telegramLiveCheck
+  telegramLiveCheck,
+  codexLiveCheck
 });
 
 for (const check of result.checks) {

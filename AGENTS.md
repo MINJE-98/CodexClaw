@@ -22,6 +22,7 @@
 - `npm run check`: run the repository typecheck gate.
 - `npm run typecheck`: run `tsc --noEmit` directly.
 - `npm run healthcheck`: run the local runtime health check.
+- `npm run healthcheck:live`: run the live Codex + Telegram health probe when local credentials are configured.
 
 ## Lint And Format
 
@@ -52,5 +53,6 @@
 - Run `npm run format:check`.
 - Run `npm test`.
 - Run `npm run healthcheck`.
+- Run `npm run healthcheck:live` before production-facing releases when real credentials are available.
 - Review `git diff --stat` and `git status --short` for accidental edits.
 - If bot commands or behavior changed, update `README.md` and include a Telegram usage example in the PR or commit notes.

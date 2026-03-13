@@ -1,7 +1,9 @@
 import fs from "node:fs";
+import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import { repairNodePtySpawnHelperPermissions } from "../runner/ptyPreflight.js";
+import { extractCodexExecResponse } from "../bot/formatter.js";
 
 function makeCheck(name, status, detail) {
   return { name, status, detail };
@@ -66,6 +68,96 @@ function checkWritableDirectory(name, directoryPath) {
       `Directory is not writable: ${directoryPath} (${error.message})`
     );
   }
+}
+
+function runCliCodexLiveCheck(config) {
+  return new Promise((resolve, reject) => {
+    const prompt = "Reply with exactly: HEALTHCHECK_OK";
+    const proc = spawn(
+      config.runner.command,
+      [...(config.runner.args || []), "exec", prompt],
+      {
+        cwd: config.runner.cwd,
+        env: process.env
+      }
+    );
+
+    let stdout = "";
+    let stderr = "";
+
+    proc.stdout?.on("data", (chunk) => {
+      stdout += String(chunk || "");
+    });
+    proc.stderr?.on("data", (chunk) => {
+      stderr += String(chunk || "");
+    });
+    proc.on("error", reject);
+    proc.on("close", (code, signal) => {
+      const output = extractCodexExecResponse(`${stdout}\n${stderr}`).trim();
+      if (code !== 0) {
+        reject(
+          new Error(
+            `CLI health check exited with code ${code}, signal ${signal || "none"}`
+          )
+        );
+        return;
+      }
+
+      if (output !== "HEALTHCHECK_OK") {
+        reject(
+          new Error(`Unexpected CLI response: ${output || "(empty output)"}`)
+        );
+        return;
+      }
+
+      resolve({
+        backend: "cli",
+        output
+      });
+    });
+  });
+}
+
+async function runSdkCodexLiveCheck(config) {
+  const { Codex } = await import("@openai/codex-sdk");
+  const codex = new Codex({
+    config: config.runner.sdkConfig
+  });
+  const thread = codex.startThread({
+    workingDirectory: config.runner.cwd,
+    skipGitRepoCheck: config.runner.sdkThreadOptions.skipGitRepoCheck,
+    approvalPolicy: config.runner.sdkThreadOptions.approvalPolicy,
+    sandboxMode: config.runner.sdkThreadOptions.sandboxMode,
+    modelReasoningEffort: config.runner.sdkThreadOptions.modelReasoningEffort,
+    networkAccessEnabled: config.runner.sdkThreadOptions.networkAccessEnabled,
+    webSearchMode: config.runner.sdkThreadOptions.webSearchMode,
+    additionalDirectories: config.runner.sdkThreadOptions.additionalDirectories
+  });
+  const turn = await thread.run("Reply with exactly: HEALTHCHECK_OK");
+
+  if (turn.finalResponse.trim() !== "HEALTHCHECK_OK") {
+    throw new Error(
+      `Unexpected SDK response: ${turn.finalResponse.trim() || "(empty output)"}`
+    );
+  }
+
+  return {
+    backend: "sdk",
+    threadId: thread.id,
+    output: turn.finalResponse.trim()
+  };
+}
+
+async function runCodexLiveCheck(config, options = {}) {
+  if (typeof options.codexLiveRunner === "function") {
+    return options.codexLiveRunner(config);
+  }
+
+  if (config.runner.backend === "sdk") {
+    return runSdkCodexLiveCheck(config);
+  }
+
+  return runCliCodexLiveCheck(config);
 }
 
 export async function runHealthcheck(config, options = {}) {
@@ -141,6 +233,30 @@ export async function runHealthcheck(config, options = {}) {
       }
     } catch (error) {
       checks.push(makeCheck("telegram api", "fail", error.message));
+    }
+  }
+
+  const codexLiveCheck = Boolean(options.codexLiveCheck);
+  if (codexLiveCheck) {
+    try {
+      const result = await runCodexLiveCheck(config, options);
+      checks.push(
+        makeCheck(
+          "codex live",
+          "pass",
+          `${result.backend} backend responded with ${result.output}${
+            result.threadId ? ` (thread ${result.threadId})` : ""
+          }`
+        )
+      );
+    } catch (error) {
+      checks.push(
+        makeCheck(
+          "codex live",
+          "fail",
+          error instanceof Error ? error.message : String(error)
+        )
+      );
     }
   }
 
