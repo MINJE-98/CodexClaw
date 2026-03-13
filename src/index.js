@@ -4,6 +4,7 @@ import { createAuthMiddleware } from "./bot/middleware.js";
 import { registerHandlers } from "./bot/handlers.js";
 import { Router } from "./orchestrator/router.js";
 import { McpClient } from "./orchestrator/mcpClient.js";
+import { SkillRegistry } from "./orchestrator/skillRegistry.js";
 import { McpSkill } from "./orchestrator/skills/mcpSkill.js";
 import { GitHubSkill } from "./orchestrator/skills/githubSkill.js";
 import { PtyManager } from "./runner/ptyManager.js";
@@ -28,9 +29,11 @@ const skills = {
   github: githubSkill,
   mcp: mcpSkill
 };
+const skillRegistry = new SkillRegistry(skills);
 
 const router = new Router({
-  skills
+  skills,
+  isSkillEnabled: (chatId, skillName) => skillRegistry.isEnabled(chatId, skillName)
 });
 
 const ptyManager = new PtyManager({
@@ -53,6 +56,7 @@ registerHandlers({
   ptyManager,
   shellManager,
   skills,
+  skillRegistry,
   scheduler
 });
 

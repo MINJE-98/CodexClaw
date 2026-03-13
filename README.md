@@ -131,6 +131,9 @@ General:
 - `/auto <task>` - force a one-off `codex exec --full-auto`
 - `/plan <task>` - ask Codex for a plan only, without direct file modification intent
 - `/model [name|reset]` - show or set the model override for the current chat
+- `/skill list` - show skill switches for the current chat
+- `/skill on <name>` - enable a skill for the current chat
+- `/skill off <name>` - disable a skill for the current chat
 - `/sh <command>` - run a safe allowlisted Linux command in the current project (disabled by default)
 - `/sh --confirm <command>` - confirm a dangerous command when writable mode is enabled
 - `/interrupt` - send `Ctrl+C` to current PTY session
@@ -139,6 +142,11 @@ General:
 
 MCP skill:
 
+- `/mcp list`
+- `/mcp status [server]`
+- `/mcp reconnect <server>`
+- `/mcp enable <server>`
+- `/mcp disable <server>`
 - `/mcp tools <server>`
 - `/mcp call <server> <tool> {"query":"..."}`
 
@@ -158,6 +166,7 @@ Telegram adaptation notes:
 - `/new` is implemented by the bot and resets the current chat session
 - `/status` is implemented by the bot and reports local runtime state
 - `/repo` is implemented by the bot and switches the per-chat working directory inside `WORKSPACE_ROOT`
+- `/skill` is implemented by the bot and keeps per-chat skill switches in runtime state
 - `/sh` is implemented by the bot, never invokes a shell interpreter, and only accepts configured command prefixes
 - `/sh` is read-only by default; dangerous prefixes can be configured and require `--confirm` when writable mode is enabled
 - `/plan` translates to a planning-only prompt instead of passing a raw `/plan` slash command to Codex
@@ -256,6 +265,14 @@ It is useful when you need deterministic operator actions from Telegram, such as
 - `npm test`
 
 Treat it as an admin-only ops channel, not a general-purpose remote shell.
+
+## MCP and Skill Control Plane
+
+Telegram can manage runtime usage of Bot-side MCP and skills, but not install arbitrary new servers from chat.
+
+- MCP servers are process-level runtime resources: list, inspect, reconnect, enable, disable
+- Skills are chat-level routing switches: each chat can enable or disable `github` and `mcp` independently
+- Codex's own MCP remains separate and is not managed through these bot commands
 
 ## Troubleshooting
 

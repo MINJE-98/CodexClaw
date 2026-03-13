@@ -31,6 +31,11 @@ export class McpSkill {
       return {
         text: [
           "MCP 指令示例：",
+          "/mcp list",
+          "/mcp status [server]",
+          "/mcp reconnect <server>",
+          "/mcp enable <server>",
+          "/mcp disable <server>",
           "/mcp tools <server>",
           '/mcp call <server> <tool> {"query":"hello"}'
         ].join("\n")
@@ -38,6 +43,85 @@ export class McpSkill {
     }
 
     const [subcommand, ...rest] = stripped.split(" ");
+    if (subcommand === "list") {
+      const servers = this.mcpClient.listServers();
+      if (!servers.length) {
+        return { text: "没有配置 MCP server。" };
+      }
+
+      return {
+        text: [
+          "MCP servers:",
+          ...servers.map(
+            (server) =>
+              `- ${server.name}: ${server.enabled ? "enabled" : "disabled"}, ${server.connected ? "connected" : "disconnected"}`
+          )
+        ].join("\n")
+      };
+    }
+
+    if (subcommand === "status") {
+      const serverName = rest[0];
+      const servers = this.mcpClient.listServers();
+      const targets = serverName ? servers.filter((server) => server.name === serverName) : servers;
+
+      if (!targets.length) {
+        return { text: serverName ? `找不到 MCP server: ${serverName}` : "没有配置 MCP server。" };
+      }
+
+      return {
+        text: targets
+          .map(
+            (server) =>
+              [
+                `server: ${server.name}`,
+                `enabled: ${server.enabled ? "yes" : "no"}`,
+                `connected: ${server.connected ? "yes" : "no"}`,
+                `command: ${server.command}`,
+                `args: ${server.args.length ? server.args.join(" ") : "(none)"}`,
+                `cwd: ${server.cwd}`
+              ].join("\n")
+          )
+          .join("\n\n")
+      };
+    }
+
+    if (subcommand === "reconnect") {
+      const serverName = rest[0];
+      if (!serverName) {
+        return { text: "用法: /mcp reconnect <server>" };
+      }
+
+      const result = await this.mcpClient.reconnectServer(serverName);
+      return {
+        text: `${result.name} 已重连。enabled: ${result.enabled ? "yes" : "no"}, connected: ${result.connected ? "yes" : "no"}`
+      };
+    }
+
+    if (subcommand === "enable") {
+      const serverName = rest[0];
+      if (!serverName) {
+        return { text: "用法: /mcp enable <server>" };
+      }
+
+      const result = await this.mcpClient.enableServer(serverName);
+      return {
+        text: `${result.name} 已启用。connected: ${result.connected ? "yes" : "no"}`
+      };
+    }
+
+    if (subcommand === "disable") {
+      const serverName = rest[0];
+      if (!serverName) {
+        return { text: "用法: /mcp disable <server>" };
+      }
+
+      const result = await this.mcpClient.disableServer(serverName);
+      return {
+        text: `${result.name} 已禁用。connected: ${result.connected ? "yes" : "no"}`
+      };
+    }
+
     if (subcommand === "tools") {
       const serverName = rest[0];
       if (!serverName) {

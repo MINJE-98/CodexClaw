@@ -28,10 +28,38 @@ export class McpClient {
   constructor(config) {
     this.config = config;
     this.connections = new Map();
+    this.disabledServers = new Set();
   }
 
   hasServers() {
     return this.config.mcp.servers.length > 0;
+  }
+
+  getServerConfig(serverName) {
+    return this.config.mcp.servers.find((server) => server.name === serverName) || null;
+  }
+
+  hasServer(serverName) {
+    return Boolean(this.getServerConfig(serverName));
+  }
+
+  isServerEnabled(serverName) {
+    return this.hasServer(serverName) && !this.disabledServers.has(serverName);
+  }
+
+  isServerConnected(serverName) {
+    return this.connections.has(serverName);
+  }
+
+  listServers() {
+    return this.config.mcp.servers.map((server) => ({
+      name: server.name,
+      command: server.command,
+      args: server.args,
+      cwd: server.cwd,
+      enabled: this.isServerEnabled(server.name),
+      connected: this.isServerConnected(server.name)
+    }));
   }
 
   async connectAll() {
@@ -41,6 +69,10 @@ export class McpClient {
   }
 
   async connectServer(server) {
+    if (this.disabledServers.has(server.name)) {
+      return;
+    }
+
     if (this.connections.has(server.name)) return;
 
     const transport = new StdioClientTransport({
@@ -65,6 +97,67 @@ export class McpClient {
 
     await client.connect(transport);
     this.connections.set(server.name, { client, transport });
+  }
+
+  async connectServerByName(serverName) {
+    const server = this.getServerConfig(serverName);
+    if (!server) {
+      throw new Error(`Unknown MCP server: ${serverName}`);
+    }
+
+    if (this.disabledServers.has(serverName)) {
+      throw new Error(`MCP server is disabled: ${serverName}`);
+    }
+
+    await this.connectServer(server);
+  }
+
+  async disconnectServer(serverName) {
+    const conn = this.connections.get(serverName);
+    if (!conn) return false;
+
+    try {
+      await conn.transport?.close?.();
+    } catch {
+      // Ignore close errors on runtime disconnect.
+    }
+
+    this.connections.delete(serverName);
+    return true;
+  }
+
+  async reconnectServer(serverName) {
+    if (!this.hasServer(serverName)) {
+      throw new Error(`Unknown MCP server: ${serverName}`);
+    }
+
+    if (this.disabledServers.has(serverName)) {
+      throw new Error(`MCP server is disabled: ${serverName}`);
+    }
+
+    await this.disconnectServer(serverName);
+    await this.connectServerByName(serverName);
+    return this.listServers().find((server) => server.name === serverName) || null;
+  }
+
+  async disableServer(serverName) {
+    if (!this.hasServer(serverName)) {
+      throw new Error(`Unknown MCP server: ${serverName}`);
+    }
+
+    this.disabledServers.add(serverName);
+    await this.disconnectServer(serverName);
+    return this.listServers().find((server) => server.name === serverName) || null;
+  }
+
+  async enableServer(serverName) {
+    if (!this.hasServer(serverName)) {
+      throw new Error(`Unknown MCP server: ${serverName}`);
+    }
+
+    this.disabledServers.delete(serverName);
+    await this.connectServerByName(serverName);
+    return this.listServers().find((server) => server.name === serverName) || null;
   }
 
   async listTools(serverName) {

@@ -28,16 +28,18 @@ function likelyCodingTask(text) {
 }
 
 export class Router {
-  constructor({ skills }) {
+  constructor({ skills, isSkillEnabled = () => true }) {
     this.skills = skills;
+    this.isSkillEnabled = isSkillEnabled;
   }
 
-  async routeMessage(text) {
+  async routeMessage(text, options = {}) {
     const raw = text.trim();
+    const chatId = options.chatId;
     const githubSkill = this.skills.github;
     const mcpSkill = this.skills.mcp;
 
-    if (githubSkill && githubSkill.supports(raw)) {
+    if (githubSkill && this.isSkillEnabled(chatId, "github") && githubSkill.supports(raw)) {
       return {
         target: "skill",
         skill: "github",
@@ -45,7 +47,7 @@ export class Router {
       };
     }
 
-    if (mcpSkill && mcpSkill.supports(raw)) {
+    if (mcpSkill && this.isSkillEnabled(chatId, "mcp") && mcpSkill.supports(raw)) {
       return {
         target: "skill",
         skill: "mcp",

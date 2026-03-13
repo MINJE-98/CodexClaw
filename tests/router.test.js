@@ -14,7 +14,9 @@ test("router prioritizes github skill when it claims the message", async () => {
     }
   });
 
-  const route = await router.routeMessage("push this repo");
+  const route = await router.routeMessage("push this repo", {
+    chatId: 1
+  });
 
   assert.deepEqual(route, {
     target: "skill",
@@ -31,7 +33,9 @@ test("router routes explicit MCP messages to mcp skill", async () => {
     }
   });
 
-  const route = await router.routeMessage("/mcp tools filesystem");
+  const route = await router.routeMessage("/mcp tools filesystem", {
+    chatId: 1
+  });
 
   assert.deepEqual(route, {
     target: "skill",
@@ -48,7 +52,9 @@ test("router sends coding tasks directly to codex PTY", async () => {
     }
   });
 
-  const route = await router.routeMessage("Please fix src/index.js and run tests");
+  const route = await router.routeMessage("Please fix src/index.js and run tests", {
+    chatId: 1
+  });
 
   assert.deepEqual(route, {
     target: "pty",
@@ -64,7 +70,9 @@ test("router sends generic non-command requests to codex PTY", async () => {
     }
   });
 
-  const route = await router.routeMessage("who are u?");
+  const route = await router.routeMessage("who are u?", {
+    chatId: 1
+  });
 
   assert.deepEqual(route, {
     target: "pty",
@@ -80,10 +88,31 @@ test("router falls back to PTY when no skill matches and no MCP skill exists", a
     }
   });
 
-  const route = await router.routeMessage("hello there");
+  const route = await router.routeMessage("hello there", {
+    chatId: 1
+  });
 
   assert.deepEqual(route, {
     target: "pty",
     prompt: "hello there"
+  });
+});
+
+test("router skips disabled skills for the current chat", async () => {
+  const router = new Router({
+    skills: {
+      github: createSkill(() => true),
+      mcp: createSkill(() => false)
+    },
+    isSkillEnabled: (chatId, skillName) => !(chatId === 9 && skillName === "github")
+  });
+
+  const route = await router.routeMessage("push this repo", {
+    chatId: 9
+  });
+
+  assert.deepEqual(route, {
+    target: "pty",
+    prompt: "push this repo"
   });
 });

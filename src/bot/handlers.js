@@ -44,7 +44,19 @@ function formatProjectLines(projects, currentWorkdir) {
   });
 }
 
-export function registerHandlers({ bot, router, ptyManager, shellManager, skills, scheduler }) {
+function formatSkillLines(skillStates) {
+  return skillStates.map((skill) => `- ${skill.name}: ${skill.enabled ? "on" : "off"}`);
+}
+
+export function registerHandlers({
+  bot,
+  router,
+  ptyManager,
+  shellManager,
+  skills,
+  skillRegistry,
+  scheduler
+}) {
   bot.start(async (ctx) => {
     await sendChunkedMarkdown(
       ctx,
@@ -52,7 +64,7 @@ export function registerHandlers({ bot, router, ptyManager, shellManager, skills
         "codex-telegram-claws ready.",
         "普通消息和编码任务会路由到 Codex。",
         "MCP 只在显式 /mcp 命令下调用。",
-        "试试: /status, /repo, /pwd, /exec, /auto, /plan, /model, /new, /sh",
+        "试试: /status, /repo, /pwd, /exec, /auto, /plan, /model, /skill, /new, /sh",
         "GitHub 指令示例: /gh commit \"feat: init\""
       ].join("\n")
     );
@@ -76,19 +88,24 @@ export function registerHandlers({ bot, router, ptyManager, shellManager, skills
         "/auto <task> - 强制用 codex exec --full-auto 运行任务",
         "/plan <task> - 仅生成执行计划，不直接修改代码",
         "/model [name|reset] - 查看或设置当前 chat 的模型",
+        "/skill list - 查看当前 chat 的 skill 开关",
+        "/skill on <name> - 启用 skill",
+        "/skill off <name> - 禁用 skill",
         "/sh <command> - 运行受限 Linux 命令 (默认关闭)",
         "/sh --confirm <command> - 确认执行高风险命令",
         "/interrupt - 向 Codex CLI 发送 Ctrl+C",
         "/stop - 终止当前 chat 的 PTY 会话",
         "/cron_now - 立即触发一次日报推送",
         "/gh ... - GitHub skill",
-        "/mcp ... - MCP skill (显式调用)"
+        "/mcp ... - MCP skill 管理与显式调用"
       ].join("\n")
     );
   });
 
   bot.command("status", async (ctx) => {
     const status = ptyManager.getStatus(ctx.chat.id);
+    const skillStates = skillRegistry.list(ctx.chat.id);
+    const mcpServers = skills.mcp.mcpClient.listServers();
     await sendChunkedMarkdown(
       ctx,
       [
@@ -110,7 +127,12 @@ export function registerHandlers({ bot, router, ptyManager, shellManager, skills
             ? `enabled, ${shellManager.isReadOnly() ? "read-only" : "writable"} (${shellManager.getAllowedCommands().length} prefixes)`
             : "disabled"
         }`,
-        `mcp servers: ${status.mcpServers.length ? status.mcpServers.join(", ") : "none"}`
+        `skills: ${skillStates.map((skill) => `${skill.name}:${skill.enabled ? "on" : "off"}`).join(", ") || "none"}`,
+        `mcp servers: ${
+          mcpServers.length
+            ? mcpServers.map((server) => `${server.name}:${server.enabled ? "on" : "off"}/${server.connected ? "up" : "down"}`).join(", ")
+            : "none"
+        }`
       ].join("\n")
     );
   });
@@ -217,6 +239,46 @@ export function registerHandlers({ bot, router, ptyManager, shellManager, skills
       );
     } catch (error) {
       await sendChunkedMarkdown(ctx, `切换项目失败: ${error.message}`);
+    }
+  });
+
+  bot.command("skill", async (ctx) => {
+    const payload = extractCommandPayload(ctx.message.text, "skill");
+    if (!payload || /^list$/i.test(payload)) {
+      await sendChunkedMarkdown(
+        ctx,
+        [
+          "Skills:",
+          ...formatSkillLines(skillRegistry.list(ctx.chat.id)),
+          "",
+          "Usage: /skill list | /skill on <name> | /skill off <name>"
+        ].join("\n")
+      );
+      return;
+    }
+
+    const [action, rawName] = payload.split(/\s+/, 2);
+    if (!/^(on|off)$/i.test(action) || !rawName) {
+      await sendChunkedMarkdown(ctx, "用法: /skill list | /skill on <name> | /skill off <name>");
+      return;
+    }
+
+    try {
+      if (/^on$/i.test(action)) {
+        skillRegistry.enable(ctx.chat.id, rawName);
+      } else {
+        skillRegistry.disable(ctx.chat.id, rawName);
+      }
+
+      await sendChunkedMarkdown(
+        ctx,
+        [
+          `skill ${rawName} 已${/^on$/i.test(action) ? "启用" : "禁用"}。`,
+          ...formatSkillLines(skillRegistry.list(ctx.chat.id))
+        ].join("\n")
+      );
+    } catch (error) {
+      await sendChunkedMarkdown(ctx, `Skill 管理失败: ${error.message}`);
     }
   });
 
@@ -412,6 +474,11 @@ export function registerHandlers({ bot, router, ptyManager, shellManager, skills
   });
 
   bot.command("gh", async (ctx) => {
+    if (!skillRegistry.isEnabled(ctx.chat.id, "github")) {
+      await sendChunkedMarkdown(ctx, "GitHub skill 当前 chat 已禁用。使用 /skill on github 重新启用。");
+      return;
+    }
+
     try {
       const text = extractCommandPayload(ctx.message.text, "gh") || "help";
       const result = await skills.github.execute({
@@ -426,6 +493,11 @@ export function registerHandlers({ bot, router, ptyManager, shellManager, skills
   });
 
   bot.command("mcp", async (ctx) => {
+    if (!skillRegistry.isEnabled(ctx.chat.id, "mcp")) {
+      await sendChunkedMarkdown(ctx, "MCP skill 当前 chat 已禁用。使用 /skill on mcp 重新启用。");
+      return;
+    }
+
     try {
       const text = ctx.message.text.trim();
       const result = await skills.mcp.execute({ text, ctx });
@@ -456,7 +528,9 @@ export function registerHandlers({ bot, router, ptyManager, shellManager, skills
     if (!text || text.startsWith("/")) return;
 
     try {
-      const route = await router.routeMessage(text);
+      const route = await router.routeMessage(text, {
+        chatId: ctx.chat.id
+      });
       if (route.target === "pty") {
         const result = await ptyManager.sendPrompt(ctx, route.prompt);
         if (!result.started) {
@@ -476,7 +550,8 @@ export function registerHandlers({ bot, router, ptyManager, shellManager, skills
 
       const result = await skill.execute({
         text: route.payload,
-        ctx
+        ctx,
+        workdir: ptyManager.getStatus(ctx.chat.id).workdir
       });
       await sendSkillResult(ctx, result);
     } catch (error) {

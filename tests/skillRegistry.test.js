@@ -1,0 +1,38 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { SkillRegistry } from "../src/orchestrator/skillRegistry.js";
+
+test("skill registry enables all known skills by default per chat", () => {
+  const registry = new SkillRegistry({
+    github: {},
+    mcp: {}
+  });
+
+  assert.deepEqual(registry.list(1), [
+    { name: "github", enabled: true },
+    { name: "mcp", enabled: true }
+  ]);
+});
+
+test("skill registry toggles skills per chat without affecting other chats", () => {
+  const registry = new SkillRegistry({
+    github: {},
+    mcp: {}
+  });
+
+  registry.disable(1, "github");
+
+  assert.equal(registry.isEnabled(1, "github"), false);
+  assert.equal(registry.isEnabled(2, "github"), true);
+
+  registry.enable(1, "github");
+  assert.equal(registry.isEnabled(1, "github"), true);
+});
+
+test("skill registry rejects unknown skills", () => {
+  const registry = new SkillRegistry({
+    github: {}
+  });
+
+  assert.throws(() => registry.disable(1, "unknown"), /Unknown skill/);
+});
