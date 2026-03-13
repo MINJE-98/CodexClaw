@@ -45,8 +45,8 @@ const MESSAGES = {
       "/repo recent - Show recent projects for this chat",
       "/repo - - Switch back to the previous project",
       "/new - Clear the current project's saved conversation",
-      "/exec <task> - Force a one-off codex exec run",
-      "/auto <task> - Force a one-off codex exec --full-auto run",
+      "/exec <task> - Force a one-off Codex run without saving project context",
+      "/auto <task> - Force a one-off fully automatic Codex run",
       "/plan <task> - Generate a plan only, without direct file modification intent",
       "/model [name|reset] - Show or set the model for this chat",
       "/language [en|zh|zh-HK] - Show or set the system language for this chat",
@@ -58,8 +58,8 @@ const MESSAGES = {
       "/sh <command> - Run a restricted Linux command (disabled by default)",
       "/sh --confirm <command> - Confirm a dangerous shell command",
       "/restart - Restart the bot process",
-      "/interrupt - Send Ctrl+C to Codex CLI",
-      "/stop - Terminate the current PTY session",
+      "/interrupt - Interrupt the active Codex run",
+      "/stop - Terminate the active Codex run",
       "/cron_now - Trigger the daily summary immediately",
       "/gh ... - GitHub skill",
       "/mcp ... - MCP control and explicit tool calls"
@@ -72,16 +72,19 @@ const MESSAGES = {
       mcpSummary
     }) => [
       "Status:",
+      `backend: ${status.backend}`,
       `active: ${status.active ? "yes" : "no"}`,
       `active mode: ${status.activeMode || "idle"}`,
       `last mode: ${status.lastMode || "none"}`,
       `last exit: ${status.lastExitCode === null ? "n/a" : status.lastExitCode}`,
       `pty supported: ${
-        status.ptySupported === null
-          ? "unknown"
-          : status.ptySupported
-            ? "yes"
-            : "no (exec fallback)"
+        status.backend === "sdk"
+          ? "n/a (sdk backend)"
+          : status.ptySupported === null
+            ? "unknown"
+            : status.ptySupported
+              ? "yes"
+              : "no (exec fallback)"
       }`,
       `preferred model: ${status.preferredModel || "inherit codex default"}`,
       `language: ${status.language} (${languageLabel(status.language, "en")})`,
@@ -171,8 +174,8 @@ const MESSAGES = {
     usagePlan: "Usage: /plan <task>",
     usageVerbose: "Usage: /verbose [on|off]",
     usageLanguage: "Usage: /language [en|zh|zh-HK]",
-    execNotice: "Running one-off `codex exec` task...",
-    autoNotice: "Running one-off `codex exec --full-auto` task...",
+    execNotice: "Running one-off Codex task...",
+    autoNotice: "Running one-off fully automatic Codex task...",
     planNotice: "Running planning-only Codex task...",
     taskBusy: ({ mode }) =>
       `A ${mode || "unknown"} task is already running. Wait for it to finish or use /interrupt first.`,
@@ -223,12 +226,12 @@ const MESSAGES = {
     languageInvalid: "Supported languages: en, zh, zh-HK.",
     interruptResult: ({ ok }) =>
       ok
-        ? "Sent Ctrl+C to the active Codex session."
-        : "There is no active PTY session for this chat.",
+        ? "Interrupted the active Codex run."
+        : "There is no active Codex run for this chat.",
     stopResult: ({ ok }) =>
       ok
-        ? "The PTY session was terminated."
-        : "There is no active PTY session for this chat.",
+        ? "The active Codex run was terminated."
+        : "There is no active Codex run for this chat.",
     cronTriggered: "The daily summary was triggered and sent.",
     triggerFailed: ({ error }) => `Trigger failed: ${error}`,
     githubDisabled:
@@ -431,8 +434,8 @@ const MESSAGES = {
       "/repo recent - 查看最近项目",
       "/repo - - 切回上一个项目",
       "/new - 清空当前项目保存的会话上下文",
-      "/exec <task> - 强制执行一次 codex exec",
-      "/auto <task> - 强制执行一次 codex exec --full-auto",
+      "/exec <task> - 强制执行一次性 Codex 任务，不保存项目上下文",
+      "/auto <task> - 强制执行一次性全自动 Codex 任务",
       "/plan <task> - 仅生成计划，不直接修改文件",
       "/model [name|reset] - 查看或设置当前 chat 模型",
       "/language [en|zh|zh-HK] - 查看或设置当前 chat 的系统语言",
@@ -444,8 +447,8 @@ const MESSAGES = {
       "/sh <command> - 执行受限 Linux 命令（默认关闭）",
       "/sh --confirm <command> - 确认执行高风险命令",
       "/restart - 重启 bot 进程",
-      "/interrupt - 向 Codex CLI 发送 Ctrl+C",
-      "/stop - 终止当前 PTY 会话",
+      "/interrupt - 中断当前 Codex 任务",
+      "/stop - 终止当前 Codex 任务",
       "/cron_now - 立即触发日报",
       "/gh ... - GitHub skill",
       "/mcp ... - MCP 控制与显式工具调用"
@@ -458,16 +461,19 @@ const MESSAGES = {
       mcpSummary
     }) => [
       "状态:",
+      `backend: ${status.backend}`,
       `active: ${status.active ? "yes" : "no"}`,
       `active mode: ${status.activeMode || "idle"}`,
       `last mode: ${status.lastMode || "none"}`,
       `last exit: ${status.lastExitCode === null ? "n/a" : status.lastExitCode}`,
       `pty supported: ${
-        status.ptySupported === null
-          ? "unknown"
-          : status.ptySupported
-            ? "yes"
-            : "no (exec fallback)"
+        status.backend === "sdk"
+          ? "n/a (sdk backend)"
+          : status.ptySupported === null
+            ? "unknown"
+            : status.ptySupported
+              ? "yes"
+              : "no (exec fallback)"
       }`,
       `preferred model: ${status.preferredModel || "inherit codex default"}`,
       `language: ${status.language} (${languageLabel(status.language, "zh")})`,
@@ -556,8 +562,8 @@ const MESSAGES = {
     usagePlan: "用法: /plan <task>",
     usageVerbose: "用法: /verbose [on|off]",
     usageLanguage: "用法: /language [en|zh|zh-HK]",
-    execNotice: "正在执行一次性 `codex exec` 任务...",
-    autoNotice: "正在执行一次性 `codex exec --full-auto` 任务...",
+    execNotice: "正在执行一次性 Codex 任务...",
+    autoNotice: "正在执行一次性全自动 Codex 任务...",
     planNotice: "正在执行仅规划模式的 Codex 任务...",
     taskBusy: ({ mode }) =>
       `当前已有 ${mode || "unknown"} 任务在运行。请等待完成或先使用 /interrupt。`,
@@ -606,9 +612,9 @@ const MESSAGES = {
       `语言已切换为 ${language} (${languageLabel(language, "zh")})。`,
     languageInvalid: "支持的语言: en, zh, zh-HK。",
     interruptResult: ({ ok }) =>
-      ok ? "已发送 Ctrl+C。" : "当前 chat 没有活动 PTY 会话。",
+      ok ? "已中断当前 Codex 任务。" : "当前 chat 没有活动 Codex 任务。",
     stopResult: ({ ok }) =>
-      ok ? "PTY 会话已终止。" : "当前 chat 没有活动 PTY 会话。",
+      ok ? "当前 Codex 任务已终止。" : "当前 chat 没有活动 Codex 任务。",
     cronTriggered: "日报已触发并推送。",
     triggerFailed: ({ error }) => `触发失败: ${error}`,
     githubDisabled:

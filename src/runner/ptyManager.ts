@@ -2,6 +2,13 @@ import fs from "node:fs";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
+import {
+  Codex,
+  type CodexOptions,
+  type ThreadEvent,
+  type ThreadItem,
+  type ThreadOptions as CodexThreadOptions
+} from "@openai/codex-sdk";
 import pty from "node-pty";
 import throttle from "lodash.throttle";
 import stripAnsi from "strip-ansi";
@@ -11,7 +18,7 @@ import { normalizeLanguage, t } from "../bot/i18n.js";
 import { repairNodePtySpawnHelperPermissions } from "./ptyPreflight.js";
 
 type Locale = "en" | "zh" | "zh-HK";
-type SessionMode = "pty" | "exec";
+type SessionMode = "pty" | "exec" | "sdk";
 type ExitSignal = number | NodeJS.Signals | null;
 
 interface PtyProcess {
@@ -45,6 +52,23 @@ interface BotLike {
   telegram: TelegramApiLike;
 }
 
+interface CodexThreadLike {
+  id: string | null;
+  runStreamed(
+    input: string,
+    options?: {
+      signal?: AbortSignal;
+    }
+  ): Promise<{
+    events: AsyncGenerator<ThreadEvent>;
+  }>;
+}
+
+interface CodexClientLike {
+  startThread(options?: CodexThreadOptions): CodexThreadLike;
+  resumeThread(id: string, options?: CodexThreadOptions): CodexThreadLike;
+}
+
 interface ProjectConversationState {
   lastSessionId: string;
   lastMode: SessionMode | null;
@@ -70,6 +94,10 @@ interface RunnerSession {
   sessionId: string;
   trackConversation: boolean;
   proc: PtyProcess | ChildProcessWithoutNullStreams | null;
+  thread: CodexThreadLike | null;
+  abortController: AbortController | null;
+  renderableItems: Map<string, string>;
+  renderableItemOrder: string[];
   rawBuffer: string;
   streamMessageIds: number[];
   lastRendered: string;
@@ -141,6 +169,7 @@ export interface PtyManagerSnapshot {
 }
 
 export interface PtyManagerStatus {
+  backend: AppConfig["runner"]["backend"];
   active: boolean;
   activeMode: SessionMode | null;
   lastMode: SessionMode | null;
@@ -162,6 +191,7 @@ interface PtyManagerOptions {
   bot: BotLike;
   config: Pick<AppConfig, "runner" | "workspace" | "reasoning" | "mcp">;
   onChange?: (snapshot: PtyManagerSnapshot) => void;
+  codexClientFactory?: (options: CodexOptions) => CodexClientLike;
 }
 
 function isMessageNotModified(error: unknown): boolean {
@@ -197,6 +227,48 @@ function toLocale(value: string): Locale {
   return isLocale(value) ? value : "en";
 }
 
+function isAbortError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as { name?: unknown; message?: unknown };
+  const name = String(candidate.name || "");
+  const message = String(candidate.message || "");
+  return name === "AbortError" || /aborted/i.test(message);
+}
+
+function summarizeSdkItem(item: ThreadItem, verbose: boolean): string | null {
+  switch (item.type) {
+    case "agent_message":
+      return item.text?.trim() ? item.text : null;
+    case "reasoning":
+      return item.text?.trim() ? `<think>${item.text}</think>` : null;
+    case "error":
+      return item.message?.trim() ? `[error] ${item.message}` : null;
+    case "command_execution":
+      return verbose && item.command ? `[command] ${item.command}` : null;
+    case "mcp_tool_call":
+      return verbose
+        ? `[mcp] ${item.server}/${item.tool} (${item.status})`
+        : null;
+    case "web_search":
+      return verbose ? `[web] ${item.query}` : null;
+    case "todo_list":
+      return verbose && item.items.length
+        ? item.items
+            .map((entry) => `- [${entry.completed ? "x" : " "}] ${entry.text}`)
+            .join("\n")
+        : null;
+    case "file_change":
+      return verbose && item.changes.length
+        ? `[files] ${item.changes.map((change) => `${change.kind}:${change.path}`).join(", ")}`
+        : null;
+    default:
+      return null;
+  }
+}
+
 export class PtyManager {
   readonly bot: BotLike;
   readonly config: Pick<
@@ -211,12 +283,26 @@ export class PtyManager {
     executable: boolean;
     error?: string;
   };
+  private readonly codexClientFactory: (
+    options: CodexOptions
+  ) => CodexClientLike;
+  private codexClient: CodexClientLike | null;
   private readonly onChange?: (snapshot: PtyManagerSnapshot) => void;
 
-  constructor({ bot, config, onChange }: PtyManagerOptions) {
+  constructor({
+    bot,
+    config,
+    onChange,
+    codexClientFactory
+  }: PtyManagerOptions) {
     this.bot = bot;
     this.config = config;
     this.onChange = onChange;
+    this.codexClientFactory =
+      codexClientFactory ??
+      ((options: CodexOptions) =>
+        new Codex(options) as unknown as CodexClientLike);
+    this.codexClient = null;
     this.sessions = new Map();
     this.chatState = new Map();
     this.ptyPreflight = repairNodePtySpawnHelperPermissions();
@@ -291,6 +377,100 @@ export class PtyManager {
       args.push("-m", state.preferredModel);
     }
     return args;
+  }
+
+  getCodexClient(): CodexClientLike {
+    if (this.codexClient) {
+      return this.codexClient;
+    }
+
+    const options: CodexOptions = {
+      config: this.config.runner.sdkConfig
+    };
+
+    if (this.config.runner.command !== "codex") {
+      options.codexPathOverride = this.config.runner.command;
+    }
+
+    this.codexClient = this.codexClientFactory(options);
+    return this.codexClient;
+  }
+
+  getSdkThreadOptions(
+    chatId: string | number,
+    workdir: string,
+    overrides: Partial<CodexThreadOptions> = {}
+  ): CodexThreadOptions {
+    const state = this.ensureChatState(chatId);
+    const baseOptions = this.config.runner.sdkThreadOptions;
+    const threadOptions: CodexThreadOptions = {
+      workingDirectory: workdir,
+      skipGitRepoCheck: baseOptions.skipGitRepoCheck,
+      additionalDirectories: [...baseOptions.additionalDirectories]
+    };
+
+    if (baseOptions.sandboxMode) {
+      threadOptions.sandboxMode = baseOptions.sandboxMode;
+    }
+    if (baseOptions.approvalPolicy) {
+      threadOptions.approvalPolicy = baseOptions.approvalPolicy;
+    }
+    if (baseOptions.modelReasoningEffort) {
+      threadOptions.modelReasoningEffort = baseOptions.modelReasoningEffort;
+    }
+    if (typeof baseOptions.networkAccessEnabled === "boolean") {
+      threadOptions.networkAccessEnabled = baseOptions.networkAccessEnabled;
+    }
+    if (baseOptions.webSearchMode) {
+      threadOptions.webSearchMode = baseOptions.webSearchMode;
+    }
+    if (state.preferredModel) {
+      threadOptions.model = state.preferredModel;
+    }
+
+    const merged = {
+      ...threadOptions,
+      ...overrides,
+      workingDirectory: workdir
+    };
+
+    if (merged.approvalPolicy === undefined) {
+      delete merged.approvalPolicy;
+    }
+    if (merged.sandboxMode === undefined) {
+      delete merged.sandboxMode;
+    }
+    if (merged.modelReasoningEffort === undefined) {
+      delete merged.modelReasoningEffort;
+    }
+    if (merged.networkAccessEnabled === undefined) {
+      delete merged.networkAccessEnabled;
+    }
+    if (merged.webSearchMode === undefined) {
+      delete merged.webSearchMode;
+    }
+    if (!merged.model) {
+      delete merged.model;
+    }
+    if (!merged.additionalDirectories?.length) {
+      delete merged.additionalDirectories;
+    }
+
+    return merged;
+  }
+
+  rememberSessionId(session: RunnerSession, sessionId: string): void {
+    if (!sessionId || sessionId === session.sessionId) return;
+
+    session.sessionId = sessionId;
+    if (!session.trackConversation) return;
+
+    const projectState = this.ensureProjectState(
+      session.chatId,
+      session.workdir
+    );
+    projectState.lastSessionId = sessionId;
+    this.onChange?.(this.exportState());
   }
 
   isVerbose(chatId: string | number): boolean {
@@ -534,6 +714,10 @@ export class PtyManager {
       sessionId: projectState.lastSessionId || "",
       trackConversation: options.trackConversation !== false,
       proc: null,
+      thread: null,
+      abortController: null,
+      renderableItems: new Map(),
+      renderableItemOrder: [],
       rawBuffer: "",
       streamMessageIds: [],
       lastRendered: "",
@@ -556,15 +740,76 @@ export class PtyManager {
     if (!session.trackConversation) return;
 
     const sessionId = extractSessionId(session.rawBuffer);
-    if (!sessionId || sessionId === session.sessionId) return;
+    this.rememberSessionId(session, sessionId);
+  }
 
-    session.sessionId = sessionId;
+  updateSdkRenderableItem(session: RunnerSession, item: ThreadItem): void {
+    const text = summarizeSdkItem(item, this.isVerbose(session.chatId));
+    const hasEntry = session.renderableItems.has(item.id);
+
+    if (!text) {
+      if (hasEntry) {
+        session.renderableItems.delete(item.id);
+        session.renderableItemOrder = session.renderableItemOrder.filter(
+          (entryId) => entryId !== item.id
+        );
+      }
+      session.rawBuffer = this.composeSdkRawBuffer(session);
+      return;
+    }
+
+    if (!hasEntry) {
+      session.renderableItemOrder.push(item.id);
+    }
+
+    session.renderableItems.set(item.id, text);
+    session.rawBuffer = this.composeSdkRawBuffer(session);
+  }
+
+  composeSdkRawBuffer(session: RunnerSession): string {
+    return session.renderableItemOrder
+      .map((itemId) => session.renderableItems.get(itemId) || "")
+      .filter(Boolean)
+      .join("\n\n")
+      .trim();
+  }
+
+  async finalizeSession(
+    session: RunnerSession,
+    exitCode: number | null,
+    signal: ExitSignal
+  ): Promise<void> {
+    this.captureSessionMetadata(session);
     const projectState = this.ensureProjectState(
       session.chatId,
       session.workdir
     );
-    projectState.lastSessionId = sessionId;
+    projectState.lastMode = session.mode;
+    projectState.lastExitCode = exitCode;
+    projectState.lastExitSignal = signal;
     this.onChange?.(this.exportState());
+
+    if (this.sessions.get(session.chatId) === session) {
+      this.enqueueFlush(session.chatId);
+    }
+
+    if (this.isVerbose(session.chatId)) {
+      await this.bot.telegram
+        .sendMessage(
+          session.chatId,
+          t(this.getLanguage(session.chatId), "codexSessionExited", {
+            mode: session.mode,
+            exitCode,
+            signal
+          })
+        )
+        .catch(() => {});
+    }
+
+    session.throttledFlush.cancel();
+    if (this.sessions.get(session.chatId) === session) {
+      this.sessions.delete(session.chatId);
+    }
   }
 
   attachOutput(
@@ -595,31 +840,7 @@ export class PtyManager {
     ) => void
   ): void {
     handler(async ({ exitCode, signal }) => {
-      this.captureSessionMetadata(session);
-      const projectState = this.ensureProjectState(
-        session.chatId,
-        session.workdir
-      );
-      projectState.lastMode = session.mode;
-      projectState.lastExitCode = exitCode;
-      projectState.lastExitSignal = signal;
-      this.onChange?.(this.exportState());
-
-      this.enqueueFlush(session.chatId);
-      if (this.isVerbose(session.chatId)) {
-        await this.bot.telegram
-          .sendMessage(
-            session.chatId,
-            t(this.getLanguage(session.chatId), "codexSessionExited", {
-              mode: session.mode,
-              exitCode,
-              signal
-            })
-          )
-          .catch(() => {});
-      }
-      session.throttledFlush.cancel();
-      this.sessions.delete(session.chatId);
+      await this.finalizeSession(session, exitCode, signal);
     });
   }
 
@@ -710,10 +931,113 @@ export class PtyManager {
     return session;
   }
 
+  startSdkSessionWithOptions(
+    chatId: string | number,
+    prompt: string,
+    options: SessionOptions = {}
+  ): RunnerSession {
+    const session = this.createBaseSession(chatId, "sdk", options);
+    const controller = new AbortController();
+
+    session.abortController = controller;
+    session.interrupt = () => controller.abort();
+    session.close = () => controller.abort();
+
+    void this.runSdkTurn(session, prompt, options);
+    return session;
+  }
+
+  async runSdkTurn(
+    session: RunnerSession,
+    prompt: string,
+    options: SessionOptions = {}
+  ): Promise<void> {
+    let exitCode: number | null = 0;
+    let signal: ExitSignal = null;
+
+    try {
+      const threadOptions = this.getSdkThreadOptions(
+        session.chatId,
+        session.workdir,
+        {
+          approvalPolicy: options.fullAuto ? "never" : undefined
+        }
+      );
+      const codex = this.getCodexClient();
+      const thread = options.resumeSessionId
+        ? codex.resumeThread(options.resumeSessionId, threadOptions)
+        : codex.startThread(threadOptions);
+
+      session.thread = thread;
+      if (thread.id) {
+        this.rememberSessionId(session, thread.id);
+      }
+
+      const streamed = await thread.runStreamed(prompt, {
+        signal: session.abortController?.signal
+      });
+
+      for await (const event of streamed.events) {
+        if (event.type === "thread.started") {
+          this.rememberSessionId(session, event.thread_id);
+          continue;
+        }
+
+        if (
+          event.type === "item.started" ||
+          event.type === "item.updated" ||
+          event.type === "item.completed"
+        ) {
+          this.updateSdkRenderableItem(session, event.item);
+          session.throttledFlush();
+          continue;
+        }
+
+        if (event.type === "turn.failed") {
+          exitCode = 1;
+          session.rawBuffer = [session.rawBuffer, event.error.message]
+            .filter(Boolean)
+            .join("\n\n");
+          session.throttledFlush();
+          continue;
+        }
+
+        if (event.type === "error") {
+          exitCode = 1;
+          session.rawBuffer = [session.rawBuffer, event.message]
+            .filter(Boolean)
+            .join("\n\n");
+          session.throttledFlush();
+        }
+      }
+    } catch (error) {
+      if (isAbortError(error) || session.abortController?.signal.aborted) {
+        exitCode = null;
+        signal = "SIGINT";
+      } else {
+        exitCode = 1;
+        await this.bot.telegram
+          .sendMessage(
+            session.chatId,
+            t(this.getLanguage(session.chatId), "codexExecFailed", {
+              error: error instanceof Error ? error.message : String(error)
+            })
+          )
+          .catch(() => {});
+      }
+    } finally {
+      await this.finalizeSession(session, exitCode, signal);
+    }
+  }
+
   ensureSession(
     chatId: string | number,
     options: SessionOptions = {}
   ): RunnerSession | null {
+    if (this.config.runner.backend !== "cli") {
+      return null;
+    }
+
     const key = String(chatId);
     const existing = this.sessions.get(key);
     if (existing) return existing;
@@ -822,6 +1146,57 @@ export class PtyManager {
   > {
     const chatId = String(ctx.chat.id);
     const projectState = this.ensureProjectState(chatId);
+
+    if (this.config.runner.backend === "sdk") {
+      const running = this.sessions.get(chatId);
+      if (running) {
+        return {
+          started: false,
+          reason: "busy",
+          activeMode: running.mode
+        };
+      }
+
+      const resumed = Boolean(projectState.lastSessionId && !options.forceExec);
+      const session = this.startSdkSessionWithOptions(chatId, prompt, {
+        fullAuto: Boolean(options.fullAuto),
+        extraArgs: options.extraArgs || [],
+        workdir: this.getWorkdir(chatId),
+        resumeSessionId:
+          options.forceExec || !projectState.lastSessionId
+            ? ""
+            : projectState.lastSessionId,
+        trackConversation: !options.forceExec
+      });
+
+      if (options.notice && this.isVerbose(chatId)) {
+        await this.bot.telegram
+          .sendMessage(chatId, options.notice)
+          .catch(() => {});
+      }
+
+      if (!session.streamMessageIds.length && this.isVerbose(chatId)) {
+        const sent = await this.bot.telegram.sendMessage(
+          chatId,
+          resumed
+            ? t(this.getLanguage(chatId), "sessionRestored", {
+                project: this.getRelativeWorkdir(chatId),
+                mode: session.mode
+              })
+            : t(this.getLanguage(chatId), "sessionStarted", {
+                mode: session.mode
+              })
+        );
+        session.streamMessageIds.push(sent.message_id);
+      }
+
+      return {
+        started: true,
+        mode: "sdk",
+        resumed
+      };
+    }
+
     if (options.forceExec) {
       const running = this.sessions.get(chatId);
       if (running) {
@@ -1065,7 +1440,8 @@ export class PtyManager {
             lastSessionId: String(rawProjectState?.lastSessionId || "").trim(),
             lastMode:
               rawProjectState?.lastMode === "pty" ||
-              rawProjectState?.lastMode === "exec"
+              rawProjectState?.lastMode === "exec" ||
+              rawProjectState?.lastMode === "sdk"
                 ? rawProjectState.lastMode
                 : null,
             lastExitCode:
@@ -1119,6 +1495,7 @@ export class PtyManager {
     const session = this.sessions.get(key);
 
     return {
+      backend: this.config.runner.backend,
       active: Boolean(session),
       activeMode: session?.mode || null,
       lastMode: projectState.lastMode,
@@ -1128,7 +1505,8 @@ export class PtyManager {
       preferredModel: state.preferredModel,
       language: this.getLanguage(key),
       verboseOutput: Boolean(state.verboseOutput),
-      ptySupported: state.ptySupported,
+      ptySupported:
+        this.config.runner.backend === "sdk" ? null : state.ptySupported,
       workdir: this.getWorkdir(key),
       relativeWorkdir: this.getRelativeWorkdir(key),
       workspaceRoot: this.config.workspace.root,

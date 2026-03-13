@@ -6,6 +6,29 @@ import dotenv from "dotenv";
 dotenv.config();
 
 export type ReasoningMode = "quote" | "spoiler";
+export type RunnerBackend = "cli" | "sdk";
+export type CodexApprovalPolicy =
+  | "never"
+  | "on-request"
+  | "on-failure"
+  | "untrusted";
+export type CodexSandboxMode =
+  | "read-only"
+  | "workspace-write"
+  | "danger-full-access";
+export type CodexReasoningEffort =
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh";
+export type CodexWebSearchMode = "disabled" | "cached" | "live";
+export type CodexConfigValue =
+  | string
+  | number
+  | boolean
+  | CodexConfigValue[]
+  | { [key: string]: CodexConfigValue };
 
 export interface McpServerConfig {
   name: string;
@@ -29,12 +52,23 @@ export interface AppConfig {
     proactiveUserIds: string[];
   };
   runner: {
+    backend: RunnerBackend;
     command: string;
     args: string[];
     cwd: string;
     throttleMs: number;
     maxBufferChars: number;
     telegramChunkSize: number;
+    sdkConfig: Record<string, CodexConfigValue>;
+    sdkThreadOptions: {
+      skipGitRepoCheck: boolean;
+      sandboxMode?: CodexSandboxMode;
+      approvalPolicy?: CodexApprovalPolicy;
+      modelReasoningEffort?: CodexReasoningEffort;
+      networkAccessEnabled?: boolean;
+      webSearchMode?: CodexWebSearchMode;
+      additionalDirectories: string[];
+    };
   };
   reasoning: {
     mode: ReasoningMode;
@@ -91,6 +125,14 @@ function parseBoolean(value: string | undefined, fallback = false): boolean {
   return fallback;
 }
 
+function parseOptionalBoolean(value: string | undefined): boolean | undefined {
+  if (value === undefined || !String(value).trim()) {
+    return undefined;
+  }
+
+  return parseBoolean(value, false);
+}
+
 function parseArgs(value: string): string[] {
   if (!value.trim()) return [];
   const parts = value.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
@@ -105,6 +147,15 @@ function parseJson<T>(value: string | undefined, fallback: T): T {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Invalid JSON in environment variable: ${message}`);
   }
+}
+
+function parseEnum<T extends string>(
+  value: string | undefined,
+  supported: readonly T[]
+): T | undefined {
+  const normalized = String(value || "").trim();
+  if (!normalized) return undefined;
+  return supported.includes(normalized as T) ? (normalized as T) : undefined;
 }
 
 function resolveDirectory(
@@ -137,6 +188,39 @@ function resolveFile(value: string | undefined, fallback: string): string {
   }
 
   return candidate;
+}
+
+function resolveDirectoryList(raw: unknown, name: string): string[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const resolved: string[] = [];
+  for (const [index, item] of raw.entries()) {
+    if (typeof item !== "string" || !item.trim()) {
+      continue;
+    }
+
+    const candidate = path.resolve(item);
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+      resolved.push(candidate);
+      continue;
+    }
+
+    console.warn(
+      `[config] ${name}[${index}] does not exist: ${candidate}. Skipping it.`
+    );
+  }
+
+  return [...new Set(resolved)];
+}
+
+function parseRunnerBackend(value: string | undefined): RunnerBackend {
+  return String(value || "")
+    .trim()
+    .toLowerCase() === "sdk"
+    ? "sdk"
+    : "cli";
 }
 
 function normalizeEnvMap(raw: unknown): Record<string, string> {
@@ -191,6 +275,7 @@ export function loadConfig(): AppConfig {
   const proactiveUserIds = parseCsv(
     process.env.PROACTIVE_USER_IDS || process.env.ALLOWED_USER_IDS
   );
+  const runnerBackend = parseRunnerBackend(process.env.CODEX_BACKEND);
   const rawMcpServers = parseJson<unknown[]>(process.env.MCP_SERVERS, []);
   const mcpServers = Array.isArray(rawMcpServers)
     ? rawMcpServers
@@ -229,6 +314,43 @@ export function loadConfig(): AppConfig {
         .filter(Boolean)
     : [];
   const shellEnabled = parseBoolean(process.env.SHELL_ENABLED, false);
+  const sdkConfig = parseJson<Record<string, CodexConfigValue>>(
+    process.env.CODEX_SDK_CONFIG,
+    {}
+  );
+  const rawSdkAdditionalDirectories = parseJson<unknown[]>(
+    process.env.CODEX_SDK_ADDITIONAL_DIRECTORIES,
+    []
+  );
+  const sdkThreadOptions = {
+    skipGitRepoCheck: parseBoolean(
+      process.env.CODEX_SDK_SKIP_GIT_REPO_CHECK,
+      true
+    ),
+    sandboxMode: parseEnum<CodexSandboxMode>(
+      process.env.CODEX_SDK_SANDBOX_MODE,
+      ["read-only", "workspace-write", "danger-full-access"]
+    ),
+    approvalPolicy: parseEnum<CodexApprovalPolicy>(
+      process.env.CODEX_SDK_APPROVAL_POLICY,
+      ["never", "on-request", "on-failure", "untrusted"]
+    ),
+    modelReasoningEffort: parseEnum<CodexReasoningEffort>(
+      process.env.CODEX_SDK_REASONING_EFFORT,
+      ["minimal", "low", "medium", "high", "xhigh"]
+    ),
+    networkAccessEnabled: parseOptionalBoolean(
+      process.env.CODEX_SDK_NETWORK_ACCESS_ENABLED
+    ),
+    webSearchMode: parseEnum<CodexWebSearchMode>(
+      process.env.CODEX_SDK_WEB_SEARCH_MODE,
+      ["disabled", "cached", "live"]
+    ),
+    additionalDirectories: resolveDirectoryList(
+      rawSdkAdditionalDirectories,
+      "CODEX_SDK_ADDITIONAL_DIRECTORIES"
+    )
+  };
 
   if (shellEnabled && !shellAllowedCommands.length) {
     throw new Error(
@@ -253,12 +375,15 @@ export function loadConfig(): AppConfig {
       proactiveUserIds
     },
     runner: {
+      backend: runnerBackend,
       command: process.env.CODEX_COMMAND?.trim() || "codex",
       args: parseArgs(process.env.CODEX_ARGS || ""),
       cwd: runnerCwd,
       throttleMs: parseNumber(process.env.STREAM_THROTTLE_MS, 1200),
       maxBufferChars: parseNumber(process.env.STREAM_BUFFER_CHARS, 120000),
-      telegramChunkSize: 3900
+      telegramChunkSize: 3900,
+      sdkConfig,
+      sdkThreadOptions
     },
     reasoning: {
       mode: process.env.REASONING_RENDER_MODE === "quote" ? "quote" : "spoiler"

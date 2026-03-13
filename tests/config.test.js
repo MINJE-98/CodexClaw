@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { loadConfig } from "../src/config.js";
@@ -9,9 +10,18 @@ const ENV_KEYS = [
   "ALLOWED_USER_IDS",
   "PROACTIVE_USER_IDS",
   "STATE_FILE",
+  "CODEX_BACKEND",
   "CODEX_COMMAND",
   "CODEX_ARGS",
   "CODEX_WORKDIR",
+  "CODEX_SDK_CONFIG",
+  "CODEX_SDK_SKIP_GIT_REPO_CHECK",
+  "CODEX_SDK_SANDBOX_MODE",
+  "CODEX_SDK_APPROVAL_POLICY",
+  "CODEX_SDK_REASONING_EFFORT",
+  "CODEX_SDK_NETWORK_ACCESS_ENABLED",
+  "CODEX_SDK_WEB_SEARCH_MODE",
+  "CODEX_SDK_ADDITIONAL_DIRECTORIES",
   "WORKSPACE_ROOT",
   "SHELL_ENABLED",
   "SHELL_READ_ONLY",
@@ -70,15 +80,32 @@ test("loadConfig parses env values into runtime config", () => {
     os.tmpdir(),
     "codex-telegram-claws-runtime-state.json"
   );
+  const extraDir = path.join(os.tmpdir(), "codex-telegram-claws-sdk-extra");
+  const extraDirTwo = path.join(
+    os.tmpdir(),
+    "codex-telegram-claws-sdk-extra-two"
+  );
+  fs.mkdirSync(extraDir, { recursive: true });
+  fs.mkdirSync(extraDirTwo, { recursive: true });
   const config = withEnv(
     {
       BOT_TOKEN: "telegram-token",
       ALLOWED_USER_IDS: "1, 2",
       PROACTIVE_USER_IDS: "2",
       STATE_FILE: stateFile,
+      CODEX_BACKEND: "sdk",
       CODEX_COMMAND: "codex",
       CODEX_ARGS: '--approval-mode auto "--model gpt-5"',
       CODEX_WORKDIR: ".",
+      CODEX_SDK_CONFIG:
+        '{"show_raw_agent_reasoning":true,"sandbox_workspace_write":{"network_access":true}}',
+      CODEX_SDK_SKIP_GIT_REPO_CHECK: "false",
+      CODEX_SDK_SANDBOX_MODE: "workspace-write",
+      CODEX_SDK_APPROVAL_POLICY: "on-request",
+      CODEX_SDK_REASONING_EFFORT: "high",
+      CODEX_SDK_NETWORK_ACCESS_ENABLED: "true",
+      CODEX_SDK_WEB_SEARCH_MODE: "live",
+      CODEX_SDK_ADDITIONAL_DIRECTORIES: JSON.stringify([extraDir, extraDirTwo]),
       WORKSPACE_ROOT: ".",
       SHELL_ENABLED: "true",
       SHELL_READ_ONLY: "false",
@@ -105,6 +132,7 @@ test("loadConfig parses env values into runtime config", () => {
   assert.equal(config.app.stateFile, stateFile);
   assert.deepEqual(config.telegram.allowedUserIds, ["1", "2"]);
   assert.deepEqual(config.telegram.proactiveUserIds, ["2"]);
+  assert.equal(config.runner.backend, "sdk");
   assert.equal(config.runner.command, "codex");
   assert.equal(config.workspace.root, process.cwd());
   assert.equal(config.shell.enabled, true);
@@ -124,6 +152,22 @@ test("loadConfig parses env values into runtime config", () => {
   ]);
   assert.equal(config.runner.throttleMs, 1500);
   assert.equal(config.runner.maxBufferChars, 2048);
+  assert.deepEqual(config.runner.sdkConfig, {
+    show_raw_agent_reasoning: true,
+    sandbox_workspace_write: {
+      network_access: true
+    }
+  });
+  assert.equal(config.runner.sdkThreadOptions.skipGitRepoCheck, false);
+  assert.equal(config.runner.sdkThreadOptions.sandboxMode, "workspace-write");
+  assert.equal(config.runner.sdkThreadOptions.approvalPolicy, "on-request");
+  assert.equal(config.runner.sdkThreadOptions.modelReasoningEffort, "high");
+  assert.equal(config.runner.sdkThreadOptions.networkAccessEnabled, true);
+  assert.equal(config.runner.sdkThreadOptions.webSearchMode, "live");
+  assert.deepEqual(config.runner.sdkThreadOptions.additionalDirectories, [
+    extraDir,
+    extraDirTwo
+  ]);
   assert.equal(config.reasoning.mode, "quote");
   assert.equal(config.cron.dailySummary, "0 8 * * *");
   assert.equal(config.cron.timezone, "Asia/Singapore");

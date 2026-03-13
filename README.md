@@ -3,14 +3,14 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js 20+](https://img.shields.io/badge/node-20%2B-green.svg)](https://nodejs.org/en/download/current)
 
-A Telegram bot that gives you remote access to `@openai/codex` through a PTY-backed Node.js runtime.  
-It is strictly inspired by `RichardAtCT/claude-code-telegram`, but this project is implemented for Codex CLI + MCP + Subagent routing.
+A Telegram bot that gives you remote access to `@openai/codex` through a Node.js runtime with two Codex backends: the Codex SDK and the legacy CLI/PTy path.  
+It is strictly inspired by `RichardAtCT/claude-code-telegram`, but this project is implemented for Codex SDK/CLI + MCP + Subagent routing.
 
 ## What Is This?
 
-This bot connects Telegram to Codex CLI and routes tasks to the right execution surface:
+This bot connects Telegram to Codex and routes tasks to the right execution surface:
 
-- **Coding tasks** -> Codex CLI in `node-pty` (real TTY, stable interactive behavior)
+- **Coding tasks** -> Codex SDK threads or Codex CLI/PTy sessions
 - **Explicit tool tasks** -> Subagents (`/mcp`, `GitHub Skill`)
 - **Proactive automation** -> Cron scheduler for daily summaries and push notifications
 
@@ -19,6 +19,7 @@ Key design goals:
 - Keep Codex interactive sessions smooth and stream-safe on Telegram
 - Enforce zero-trust access with whitelist-only users
 - Avoid duplicate MCP calls by separating Codex MCP vs Bot MCP responsibilities
+- Prefer the SDK backend for new installs, while keeping the CLI backend as a fallback
 
 ## Quick Start
 
@@ -50,6 +51,7 @@ ALLOWED_USER_IDS=123456789
 STATE_FILE=.codex-telegram-claws-state.json
 WORKSPACE_ROOT=.
 CODEX_WORKDIR=.
+CODEX_BACKEND=sdk
 ```
 
 Optional safe shell:
@@ -104,7 +106,7 @@ npm run healthcheck
 Telegram Message
   -> src/bot/handlers.ts
   -> src/orchestrator/router.ts
-     -> src/runner/ptyManager.ts        (coding tasks -> Codex CLI)
+     -> src/runner/ptyManager.ts        (coding tasks -> Codex SDK or Codex CLI)
      -> src/orchestrator/skills/*.js    (general tasks -> MCP/GitHub subagents)
   -> src/bot/formatter.js
   -> Telegram sendMessage/editMessageText
@@ -116,7 +118,7 @@ Core modules:
 - `src/config.ts`: env parsing and validation
 - `src/bot/`: auth middleware, formatting, command handlers
 - `src/orchestrator/`: routing + MCP client + skills
-- `src/runner/ptyManager.ts`: Codex PTY process + streaming
+- `src/runner/ptyManager.ts`: Codex runner abstraction for SDK threads, CLI/PTy sessions, and CLI exec fallback
 - `src/cron/scheduler.js`: proactive scheduled push
 
 Enterprise target architecture: [docs/enterprise-architecture.md](/Users/ding/Documents/Code/Github/codex-telegram-claws/docs/enterprise-architecture.md)
@@ -126,7 +128,7 @@ Enterprise Phase 1 roadmap: [docs/phase-1-roadmap.md](/Users/ding/Documents/Code
 
 To avoid duplicated context fetch:
 
-- **Coding requests** are sent directly to Codex CLI (Codex can use its own MCP stack)
+- **Coding requests** are sent directly to Codex (SDK or CLI backend; Codex can use its own MCP stack)
 - **Bot-side MCP** is only used by explicit `/mcp ...` commands
 
 This prevents:
@@ -150,7 +152,7 @@ How they are triggered:
   - `/gh ...` -> GitHub skill
   - `/mcp ...` -> MCP skill
 - Plain text may also route to a subagent when the router sees a supported GitHub-style request such as `git push`, `commit`, or `run test`
-- Everything else falls back to Codex CLI
+- Everything else falls back to Codex
 
 Where this happens:
 
@@ -175,8 +177,8 @@ General:
 - `/repo recent` - show recent projects for the current chat
 - `/repo -` - switch back to the previous project
 - `/new` - clear the saved Codex conversation for the current project and start fresh on the next message
-- `/exec <task>` - force a one-off `codex exec`
-- `/auto <task>` - force a one-off `codex exec --full-auto`
+- `/exec <task>` - force a one-off Codex run without saving project context
+- `/auto <task>` - force a one-off fully automatic Codex run without saving project context
 - `/plan <task>` - ask Codex for a plan only, without direct file modification intent
 - `/model [name|reset]` - show or set the model override for the current chat
 - `/language [en|zh|zh-HK]` - show or set the system language for the current chat
@@ -188,8 +190,8 @@ General:
 - `/sh <command>` - run a safe allowlisted Linux command in the current project (disabled by default)
 - `/sh --confirm <command>` - confirm a dangerous command when writable mode is enabled
 - `/restart` - restart the bot process explicitly from Telegram
-- `/interrupt` - send `Ctrl+C` to current PTY session
-- `/stop` - terminate current PTY session
+- `/interrupt` - interrupt the active Codex run
+- `/stop` - terminate the active Codex run
 - `/cron_now` - trigger daily summary immediately
 
 MCP skill:
@@ -212,9 +214,9 @@ GitHub skill:
 
 Telegram adaptation notes:
 
-- Plain text messages behave like `codex "task description"`
-- `/exec` behaves like `codex exec "task"`
-- `/auto` behaves like `codex exec --full-auto "task"`
+- Plain text messages behave like a normal Codex conversation turn
+- `/exec` runs a one-off Codex task and does not overwrite the saved project conversation slot
+- `/auto` runs a one-off Codex task with `approvalPolicy=never` on the SDK backend, or `codex exec --full-auto` on the CLI backend
 - `/new` is implemented by the bot and resets the current chat session
 - `/new` only clears the current project's saved Codex conversation slot
 - `/status` is implemented by the bot and reports local runtime state
@@ -228,7 +230,7 @@ Telegram adaptation notes:
 
 ## Streaming and Reasoning Visualization
 
-PTY output is streamed with throttled `editMessageText` updates.
+Codex output is streamed with throttled `editMessageText` updates.
 
 - Throttle: controlled by `STREAM_THROTTLE_MS` (default `1200`)
 - Long output: auto-chunked to Telegram-safe message sizes
@@ -236,19 +238,50 @@ PTY output is streamed with throttled `editMessageText` updates.
 - Reasoning tags: `<think>...</think>` extracted and rendered as:
   - spoiler (`||...||`, default)
   - quote block (if `REASONING_RENDER_MODE=quote`)
-- If `node-pty` cannot spawn on the current host, the runner falls back to `codex exec` for per-request execution
-- In `codex exec` fallback mode, Telegram output is cleaned to hide the Codex banner, raw tool trace, `mcp startup`, and duplicate `tokens used` footer
-- On macOS, startup now auto-repairs `node-pty` helper execute permissions before the first PTY session
+- On `CODEX_BACKEND=sdk`, Telegram streams structured Codex SDK events and persists thread IDs per project
+- On `CODEX_BACKEND=cli`, the bot prefers PTY sessions; if `node-pty` cannot spawn on the current host, it falls back to `codex exec`
+- In CLI exec fallback mode, Telegram output is cleaned to hide the Codex banner, raw tool trace, `mcp startup`, and duplicate `tokens used` footer
+- On macOS, startup auto-repairs `node-pty` helper execute permissions before the first PTY session
 
 ## Project-Scoped Conversation State
 
 Conversation state is now tracked per `chat + project`, not just per chat.
 
 - When you switch with `/repo <name>`, the bot keeps that project's last Codex session id in runtime state
-- When you switch back to the same project later, the next plain-text task resumes that project's Codex conversation
+- When you switch back to the same project later, the next plain-text task resumes that project's Codex thread/session
 - `/new` clears only the current project's saved conversation slot; other projects in the same Telegram chat are untouched
 - `/exec`, `/auto`, and `/plan` stay one-off by design and do not replace the saved project conversation
-- On hosts where PTY is unavailable, project restore still works through `codex exec resume`
+- On the SDK backend, project restore uses `resumeThread(threadId)`
+- On the CLI backend, project restore uses PTY resume or `codex exec resume`
+
+## Backend Selection
+
+Choose the execution backend with `CODEX_BACKEND`:
+
+- `sdk` - preferred for new installs; avoids PTY fragility and uses persistent Codex SDK threads
+- `cli` - legacy backend; uses PTY when available and falls back to `codex exec`
+
+SDK-related options:
+
+```bash
+CODEX_BACKEND=sdk
+CODEX_SDK_CONFIG={}
+CODEX_SDK_SKIP_GIT_REPO_CHECK=true
+CODEX_SDK_SANDBOX_MODE=workspace-write
+CODEX_SDK_APPROVAL_POLICY=never
+CODEX_SDK_REASONING_EFFORT=high
+CODEX_SDK_NETWORK_ACCESS_ENABLED=true
+CODEX_SDK_WEB_SEARCH_MODE=live
+CODEX_SDK_ADDITIONAL_DIRECTORIES=["/abs/path/extra-worktree"]
+```
+
+CLI-related options:
+
+```bash
+CODEX_BACKEND=cli
+CODEX_COMMAND=codex
+CODEX_ARGS=
+```
 
 ## Event-Driven Automation
 
@@ -277,6 +310,15 @@ Common options:
 ```bash
 CODEX_COMMAND=codex
 CODEX_ARGS=
+CODEX_BACKEND=sdk
+CODEX_SDK_CONFIG={}
+CODEX_SDK_SKIP_GIT_REPO_CHECK=true
+CODEX_SDK_SANDBOX_MODE=
+CODEX_SDK_APPROVAL_POLICY=
+CODEX_SDK_REASONING_EFFORT=
+CODEX_SDK_NETWORK_ACCESS_ENABLED=
+CODEX_SDK_WEB_SEARCH_MODE=
+CODEX_SDK_ADDITIONAL_DIRECTORIES=[]
 WORKSPACE_ROOT=/Users/yourname/projects
 STATE_FILE=/path/to/codex-telegram-claws-state.json
 SHELL_ENABLED=false
@@ -389,7 +431,8 @@ Telegram can manage runtime usage of Bot-side MCP and skills, but not install ar
 ## Troubleshooting
 
 - **Bot not responding**: verify `BOT_TOKEN` and `ALLOWED_USER_IDS`
-- **Codex not producing output**: verify `CODEX_COMMAND` and `CODEX_WORKDIR`
+- **Codex not producing output**: verify `CODEX_BACKEND`, `CODEX_COMMAND`, and `CODEX_WORKDIR`
+- **SDK backend cannot resume**: verify the host still has access to `~/.codex/sessions` and that the saved thread id belongs to the same working directory
 - **Markdown parse errors**: reduce output size/context; check special characters in tool output
 - **MCP failures**: run `/mcp tools <server>` first to validate server availability
 - **GitHub API failures**: verify `GITHUB_TOKEN` scope (`repo`) and account permissions
@@ -399,4 +442,5 @@ Telegram can manage runtime usage of Bot-side MCP and skills, but not install ar
 ## Reference
 
 - Inspired by: https://github.com/RichardAtCT/claude-code-telegram
-- This implementation: Codex-first Node.js stack (`telegraf`, `node-pty`, `node-cron`, MCP SDK)
+- Codex SDK reference: https://github.com/coleam00/codex-telegram-coding-assistant
+- This implementation: Codex-first Node.js stack (`@openai/codex-sdk`, `telegraf`, `node-pty`, `node-cron`, MCP SDK)

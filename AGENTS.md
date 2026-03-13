@@ -5,7 +5,7 @@
 - `src/index.ts`: application entrypoint and subsystem wiring.
 - `src/bot/`: Telegram handlers, formatting, command parsing, i18n, middleware.
 - `src/orchestrator/`: routing, MCP client, skill registry, GitHub/MCP skills.
-- `src/runner/`: Codex PTY/exec management and restricted shell execution.
+- `src/runner/`: Codex SDK/CLI runner management, PTY fallback handling, and restricted shell execution.
 - `src/cron/`: scheduled proactive jobs.
 - `tests/`: Node built-in test suite, one `*.test.js` file per module area.
 
@@ -14,6 +14,7 @@
 - `npm install`: install dependencies.
 - `npm run start`: start the Telegram bot with the current `.env`.
 - `npm run dev`: run the bot in watch mode for local development.
+- Use `CODEX_BACKEND=sdk` for the preferred SDK-backed runner; keep `CODEX_BACKEND=cli` only when you specifically need the legacy PTY/CLI path.
 
 ## Test Commands
 

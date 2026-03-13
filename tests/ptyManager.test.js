@@ -9,7 +9,9 @@ function createManager(overrides = {}) {
   const runnerCwd = overrides.runnerCwd || process.cwd();
   const workspaceRoot = overrides.workspaceRoot || runnerCwd;
   const telegram = overrides.telegram || {
-    sendMessage: async () => ({})
+    sendMessage: async () => ({ message_id: 1 }),
+    editMessageText: async () => ({}),
+    deleteMessage: async () => ({})
   };
   return new PtyManager({
     bot: {
@@ -17,12 +19,18 @@ function createManager(overrides = {}) {
     },
     config: {
       runner: {
+        backend: overrides.backend || "cli",
         command: "codex",
         args: [],
         cwd: runnerCwd,
         throttleMs: 10,
         maxBufferChars: 1000,
-        telegramChunkSize: 3900
+        telegramChunkSize: 3900,
+        sdkConfig: {},
+        sdkThreadOptions: {
+          skipGitRepoCheck: true,
+          additionalDirectories: []
+        }
       },
       workspace: {
         root: workspaceRoot
@@ -33,8 +41,65 @@ function createManager(overrides = {}) {
       mcp: {
         servers: [{ name: "context7" }, { name: "sequential-thinking" }]
       }
+    },
+    codexClientFactory: overrides.codexClientFactory
+  });
+}
+
+function createFakeCodexClient(sequences, calls = []) {
+  return () => ({
+    startThread(options = {}) {
+      const next = sequences.shift();
+      if (!next) {
+        throw new Error("No fake SDK sequence available for startThread");
+      }
+
+      calls.push({
+        action: "start",
+        options
+      });
+
+      return {
+        id: next.initialId || null,
+        async runStreamed() {
+          return {
+            events: next.events()
+          };
+        }
+      };
+    },
+    resumeThread(id, options = {}) {
+      const next = sequences.shift();
+      if (!next) {
+        throw new Error("No fake SDK sequence available for resumeThread");
+      }
+
+      calls.push({
+        action: "resume",
+        id,
+        options
+      });
+
+      return {
+        id: next.initialId || id,
+        async runStreamed() {
+          return {
+            events: next.events()
+          };
+        }
+      };
     }
   });
+}
+
+async function waitFor(predicate, timeoutMs = 2000) {
+  const startedAt = Date.now();
+  while (!predicate()) {
+    if (Date.now() - startedAt > timeoutMs) {
+      throw new Error("Timed out while waiting for condition.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
 }
 
 test("pty manager stores model preference per chat", () => {
@@ -241,6 +306,136 @@ test("pty manager exports and restores language preference", () => {
   restored.restoreState(manager.exportState());
 
   assert.equal(restored.getLanguage(42), "zh");
+});
+
+test("pty manager stores SDK thread ids per project and resumes them", async () => {
+  const calls = [];
+  const sentMessages = [];
+  const sequences = [
+    {
+      events: async function* () {
+        yield {
+          type: "thread.started",
+          thread_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        };
+        yield {
+          type: "item.completed",
+          item: {
+            id: "item-1",
+            type: "agent_message",
+            text: "Project A ready."
+          }
+        };
+        yield {
+          type: "turn.completed",
+          usage: {
+            input_tokens: 1,
+            cached_input_tokens: 0,
+            output_tokens: 1
+          }
+        };
+      }
+    },
+    {
+      events: async function* () {
+        yield {
+          type: "item.completed",
+          item: {
+            id: "item-2",
+            type: "agent_message",
+            text: "Project A resumed."
+          }
+        };
+        yield {
+          type: "turn.completed",
+          usage: {
+            input_tokens: 1,
+            cached_input_tokens: 0,
+            output_tokens: 1
+          }
+        };
+      }
+    }
+  ];
+  const manager = createManager({
+    backend: "sdk",
+    telegram: {
+      sendMessage: async (chatId, text) => {
+        sentMessages.push({ chatId, text });
+        return { message_id: sentMessages.length };
+      },
+      editMessageText: async (chatId, messageId, _, text) => {
+        sentMessages.push({ chatId, messageId, text, edited: true });
+        return {};
+      },
+      deleteMessage: async () => ({})
+    },
+    codexClientFactory: createFakeCodexClient(sequences, calls)
+  });
+
+  await manager.sendPrompt({ chat: { id: 9 } }, "remember project a");
+  await waitFor(() => !manager.getStatus(9).active);
+
+  assert.equal(
+    manager.getStatus(9).projectSessionId,
+    "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  );
+  assert.equal(calls[0].action, "start");
+  assert.equal(calls[0].options.workingDirectory, process.cwd());
+  assert.match(sentMessages.at(-1).text, /Project A ready/);
+
+  await manager.sendPrompt({ chat: { id: 9 } }, "continue project a");
+  await waitFor(() => !manager.getStatus(9).active);
+
+  assert.equal(calls[1].action, "resume");
+  assert.equal(calls[1].id, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+  assert.match(sentMessages.at(-1).text, /Project A resumed/);
+});
+
+test("pty manager does not persist SDK thread ids for one-off runs", async () => {
+  const calls = [];
+  const manager = createManager({
+    backend: "sdk",
+    codexClientFactory: createFakeCodexClient(
+      [
+        {
+          events: async function* () {
+            yield {
+              type: "thread.started",
+              thread_id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+            };
+            yield {
+              type: "item.completed",
+              item: {
+                id: "item-1",
+                type: "agent_message",
+                text: "One-off result."
+              }
+            };
+            yield {
+              type: "turn.completed",
+              usage: {
+                input_tokens: 1,
+                cached_input_tokens: 0,
+                output_tokens: 1
+              }
+            };
+          }
+        }
+      ],
+      calls
+    )
+  });
+
+  const result = await manager.sendPrompt({ chat: { id: 12 } }, "run once", {
+    forceExec: true
+  });
+  await waitFor(() => !manager.getStatus(12).active);
+
+  assert.equal(result.started, true);
+  assert.equal(result.mode, "sdk");
+  assert.equal(manager.getStatus(12).projectSessionId, null);
+  assert.equal(calls[0].action, "start");
 });
 
 test("pty manager hides exec fallback notices when verbose output is off", async () => {
