@@ -205,8 +205,7 @@ const MESSAGES: Record<Locale, TranslationCatalog> = {
       ]),
     continueStarted: ({ mode }) =>
       `Replaying the blocked request once (${mode}).`,
-    continueNothingPending:
-      "No blocked request is pending for this chat.",
+    continueNothingPending: "No blocked request is pending for this chat.",
     codexBusyForShell:
       "A Codex task is currently running. Wait for it to finish or use /interrupt or /new first.",
     shellRequiresConfirmation: ({ command, confirmationCommand }) =>
@@ -607,8 +606,7 @@ const MESSAGES: Record<Locale, TranslationCatalog> = {
         "在同一 workdir 再启动一个 Codex 任务可能产生冲突。",
         `如果你确认要继续，只执行一次请发送 ${continueCommand}。`
       ]),
-    continueStarted: ({ mode }) =>
-      `已继续执行这条被拦下的请求一次 (${mode})。`,
+    continueStarted: ({ mode }) => `已继续执行这条被拦下的请求一次 (${mode})。`,
     continueNothingPending: "当前 chat 没有待继续的被拦截请求。",
     codexBusyForShell:
       "当前有 Codex 任务正在运行。先等待完成，或使用 /interrupt 或 /new。",

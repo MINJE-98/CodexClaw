@@ -68,10 +68,12 @@ function createContext(text: string, chatId = 1): TestContext {
   };
 }
 
-function createDependencies(overrides: {
-  sendPrompt?: () => Promise<unknown>;
-  continuePendingPrompt?: () => Promise<unknown>;
-} = {}) {
+function createDependencies(
+  overrides: {
+    sendPrompt?: () => Promise<unknown>;
+    continuePendingPrompt?: () => Promise<unknown>;
+  } = {}
+) {
   const bot = new FakeBot();
   const ptyManager = {
     getLanguage: () => "en",

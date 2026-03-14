@@ -552,7 +552,10 @@ test("pty manager blocks a prompt when another chat is active in the same workdi
     ])
   });
 
-  manager.sessions.set("2", createExecFallbackSession("2", process.cwd(), "sdk"));
+  manager.sessions.set(
+    "2",
+    createExecFallbackSession("2", process.cwd(), "sdk")
+  );
 
   const result = await manager.sendPrompt({ chat: { id: 1 } }, "edit files");
 
@@ -597,7 +600,10 @@ test("pty manager replays a blocked prompt once through the continue path", asyn
     )
   });
 
-  manager.sessions.set("2", createExecFallbackSession("2", process.cwd(), "sdk"));
+  manager.sessions.set(
+    "2",
+    createExecFallbackSession("2", process.cwd(), "sdk")
+  );
 
   const blocked = await manager.sendPrompt(
     { chat: { id: 1 } },
