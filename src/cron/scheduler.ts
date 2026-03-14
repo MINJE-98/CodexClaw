@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import { simpleGit } from "simple-git";
 import { escapeMarkdownV2 } from "../bot/formatter.js";
+import { toErrorMessage } from "../lib/errors.js";
 
 interface TelegramApiLike {
   sendMessage(
@@ -157,9 +158,7 @@ export class Scheduler {
         .slice(0, 8)
         .map((entry) => `- ${entry.hash.slice(0, 7)} ${entry.message}`);
     } catch (error: unknown) {
-      commitLines = [
-        `- git log error: ${error instanceof Error ? error.message : String(error)}`
-      ];
+      commitLines = [`- git log error: ${toErrorMessage(error)}`];
     }
 
     try {

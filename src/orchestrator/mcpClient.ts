@@ -2,6 +2,7 @@ import process from "node:process";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { AppConfig, McpServerConfig } from "../config.js";
+import { toErrorMessage } from "../lib/errors.js";
 
 interface ToolTextItem {
   text?: string;
@@ -351,7 +352,7 @@ export class McpClient {
 
         contextBlocks.push(`[${serverName}/${preferredTool.name}]\n${text}`);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = toErrorMessage(error);
         contextBlocks.push(`[${serverName}] MCP query failed: ${message}`);
       }
     }

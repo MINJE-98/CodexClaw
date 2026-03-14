@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import type { AppConfig } from "./config.js";
+import { toErrorMessage } from "./lib/errors.js";
 import type { McpClientSnapshot } from "./orchestrator/mcpClient.js";
 import type { PtyManagerSnapshot } from "./runner/ptyManager.js";
 import type { SkillRegistrySnapshot } from "./orchestrator/skillRegistry.js";
@@ -68,7 +69,7 @@ export class RuntimeStateStore {
         return defaultState();
       }
 
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toErrorMessage(error);
       console.warn(`[state] failed to load runtime state: ${message}`);
       return defaultState();
     }
@@ -94,7 +95,7 @@ export class RuntimeStateStore {
         await fs.rename(tempFile, this.file);
       })
       .catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = toErrorMessage(error);
         console.warn(`[state] failed to save runtime state: ${message}`);
       });
 

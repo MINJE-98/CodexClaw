@@ -1,5 +1,6 @@
 import { suggestClosestWord } from "../../bot/commandUtils.js";
 import { t, type Locale } from "../../bot/i18n.js";
+import { toErrorMessage } from "../../lib/errors.js";
 
 interface McpServerState {
   name: string;
@@ -194,7 +195,7 @@ export class McpSkill {
         } catch (error: unknown) {
           return {
             text: t(locale, "mcpJsonParseFailed", {
-              error: error instanceof Error ? error.message : String(error)
+              error: toErrorMessage(error)
             })
           };
         }

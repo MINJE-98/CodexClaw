@@ -12,6 +12,7 @@ import {
 } from "./i18n.js";
 import { escapeMarkdownV2, splitTelegramMessage } from "./formatter.js";
 import type { Scheduler } from "../cron/scheduler.js";
+import { toErrorMessage } from "../lib/errors.js";
 import type { Router } from "../orchestrator/router.js";
 import type { PtyManager } from "../runner/ptyManager.js";
 import type { ShellManager } from "../runner/shellManager.js";
@@ -33,10 +34,6 @@ interface RegisterHandlersOptions {
   adminActions?: {
     restart?: () => Promise<void>;
   };
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 async function sendChunkedMarkdown(
@@ -294,7 +291,7 @@ export function registerHandlers({
     } catch (error) {
       await sendChunkedMarkdown(
         ctx,
-        t(locale, "repoSwitchFailed", { error: errorMessage(error) })
+        t(locale, "repoSwitchFailed", { error: toErrorMessage(error) })
       );
     }
   });
@@ -347,7 +344,7 @@ export function registerHandlers({
     } catch (error) {
       await sendChunkedMarkdown(
         ctx,
-        t(locale, "skillManagementFailed", { error: errorMessage(error) })
+        t(locale, "skillManagementFailed", { error: toErrorMessage(error) })
       );
     }
   });
@@ -410,7 +407,7 @@ export function registerHandlers({
     try {
       validation = shellManager.inspectCommand(command, { locale });
     } catch (error) {
-      await sendChunkedMarkdown(ctx, errorMessage(error));
+      await sendChunkedMarkdown(ctx, toErrorMessage(error));
       return;
     }
 
@@ -601,7 +598,7 @@ export function registerHandlers({
     } catch (error) {
       await sendChunkedMarkdown(
         ctx,
-        t(locale, "triggerFailed", { error: errorMessage(error) })
+        t(locale, "triggerFailed", { error: toErrorMessage(error) })
       );
     }
   });
@@ -625,7 +622,7 @@ export function registerHandlers({
     } catch (error) {
       await sendChunkedMarkdown(
         ctx,
-        t(locale, "githubFailed", { error: errorMessage(error) })
+        t(locale, "githubFailed", { error: toErrorMessage(error) })
       );
     }
   });
@@ -644,7 +641,7 @@ export function registerHandlers({
     } catch (error) {
       await sendChunkedMarkdown(
         ctx,
-        t(locale, "mcpFailed", { error: errorMessage(error) })
+        t(locale, "mcpFailed", { error: toErrorMessage(error) })
       );
     }
   });
@@ -719,7 +716,7 @@ export function registerHandlers({
     } catch (error) {
       await sendChunkedMarkdown(
         ctx,
-        t(locale, "processingFailed", { error: errorMessage(error) })
+        t(locale, "processingFailed", { error: toErrorMessage(error) })
       );
     }
   });

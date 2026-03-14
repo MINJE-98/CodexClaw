@@ -3,6 +3,7 @@ import process from "node:process";
 import { simpleGit } from "simple-git";
 import { Octokit } from "@octokit/rest";
 import type { AppConfig } from "../../config.js";
+import { toErrorMessage } from "../../lib/errors.js";
 import { parseCommandLine } from "../../runner/commandLine.js";
 import { t, type Locale } from "../../bot/i18n.js";
 
@@ -189,7 +190,7 @@ export class GitHubSkill {
           workdir: workdir || this.config.github.defaultWorkdir,
           branch,
           message: commitMessage,
-          error: error instanceof Error ? error.message : String(error)
+          error: toErrorMessage(error)
         })
       };
     }

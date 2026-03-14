@@ -15,6 +15,7 @@ import stripAnsi from "strip-ansi";
 import type { AppConfig } from "../config.js";
 import { formatPtyOutput, splitTelegramMessage } from "../bot/formatter.js";
 import { normalizeLanguage, t, type Locale } from "../bot/i18n.js";
+import { toErrorMessage } from "../lib/errors.js";
 import { repairNodePtySpawnHelperPermissions } from "./ptyPreflight.js";
 type SessionMode = "pty" | "exec" | "sdk";
 type ExitSignal = number | NodeJS.Signals | null;
@@ -1018,7 +1019,7 @@ export class PtyManager {
           .sendMessage(
             session.chatId,
             t(this.getLanguage(session.chatId), "codexExecFailed", {
-              error: error instanceof Error ? error.message : String(error)
+              error: toErrorMessage(error)
             })
           )
           .catch(() => {});

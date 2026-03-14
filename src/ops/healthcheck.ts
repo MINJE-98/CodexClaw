@@ -5,6 +5,7 @@ import process from "node:process";
 import type { AppConfig } from "../config.js";
 import { repairNodePtySpawnHelperPermissions } from "../runner/ptyPreflight.js";
 import { extractCodexExecResponse } from "../bot/formatter.js";
+import { toErrorMessage } from "../lib/errors.js";
 
 export type HealthcheckStatus = "pass" | "warn" | "fail";
 
@@ -122,7 +123,7 @@ function checkWritableDirectory(
     return makeCheck(
       name,
       "fail",
-      `Directory is not writable: ${resolvedPath} (${error instanceof Error ? error.message : String(error)})`
+      `Directory is not writable: ${resolvedPath} (${toErrorMessage(error)})`
     );
   }
 }
@@ -299,13 +300,7 @@ export async function runHealthcheck(
         );
       }
     } catch (error: unknown) {
-      checks.push(
-        makeCheck(
-          "telegram api",
-          "fail",
-          error instanceof Error ? error.message : String(error)
-        )
-      );
+      checks.push(makeCheck("telegram api", "fail", toErrorMessage(error)));
     }
   }
 
@@ -325,13 +320,7 @@ export async function runHealthcheck(
         )
       );
     } catch (error) {
-      checks.push(
-        makeCheck(
-          "codex live",
-          "fail",
-          error instanceof Error ? error.message : String(error)
-        )
-      );
+      checks.push(makeCheck("codex live", "fail", toErrorMessage(error)));
     }
   }
 

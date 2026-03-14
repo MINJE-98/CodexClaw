@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import dotenv from "dotenv";
+import { toErrorMessage } from "./lib/errors.js";
 
 dotenv.config();
 
@@ -144,7 +145,7 @@ function parseJson<T>(value: string | undefined, fallback: T): T {
   try {
     return JSON.parse(value) as T;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = toErrorMessage(error);
     throw new Error(`Invalid JSON in environment variable: ${message}`);
   }
 }

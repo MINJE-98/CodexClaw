@@ -13,6 +13,7 @@ import { GitHubSkill } from "./orchestrator/skills/githubSkill.js";
 import { PtyManager } from "./runner/ptyManager.js";
 import { ShellManager } from "./runner/shellManager.js";
 import { Scheduler } from "./cron/scheduler.js";
+import { toErrorMessage } from "./lib/errors.js";
 
 const config = loadConfig();
 const bot = new Telegraf(config.telegram.botToken, {
@@ -64,7 +65,7 @@ mcpClient = new McpClient(config, {
 mcpClient.restoreState(runtimeState.mcp);
 mcpClient.warmConnections({
   onError: (error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = toErrorMessage(error);
     console.error("[mcp] connect failed:", message);
   }
 });
@@ -117,7 +118,7 @@ registerHandlers({
 
 bot.catch(async (error: unknown, ctx: any) => {
   console.error("[bot] unhandled error:", error);
-  const message = error instanceof Error ? error.message : String(error);
+  const message = toErrorMessage(error);
   await ctx.reply(`Bot error: ${message}`).catch(() => {});
 });
 

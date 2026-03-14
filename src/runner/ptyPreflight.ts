@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { toErrorMessage } from "../lib/errors.js";
 
 const EXECUTE_MASK = 0o111;
 
@@ -60,7 +61,7 @@ export function repairNodePtySpawnHelperPermissions(): ExecutablePermissionResul
       path: "",
       changed: false,
       executable: false,
-      error: error instanceof Error ? error.message : String(error)
+      error: toErrorMessage(error)
     };
   }
 }
