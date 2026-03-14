@@ -132,6 +132,51 @@ export function registerHandlers({
 }: RegisterHandlersOptions): void {
   const localeOf = (chatId: string | number): Locale =>
     ptyManager.getLanguage(chatId);
+  const handlePromptResult = async (
+    ctx: any,
+    locale: Locale,
+    result:
+      | Awaited<ReturnType<PtyManager["sendPrompt"]>>
+      | Awaited<ReturnType<PtyManager["continuePendingPrompt"]>>,
+    {
+      announceContinue = false
+    }: {
+      announceContinue?: boolean;
+    } = {}
+  ): Promise<void> => {
+    if (result.started) {
+      if (announceContinue) {
+        await sendChunkedMarkdown(
+          ctx,
+          t(locale, "continueStarted", { mode: result.mode })
+        );
+      }
+      return;
+    }
+
+    if (result.reason === "workspace_busy") {
+      await sendChunkedMarkdown(
+        ctx,
+        t(locale, "workspaceContention", {
+          relativeWorkdir: result.relativeWorkdir,
+          mode: result.activeMode || "unknown",
+          blockingChatId: result.blockingChatId,
+          continueCommand: "/continue"
+        })
+      );
+      return;
+    }
+
+    if (result.reason === "no_pending_prompt") {
+      await sendChunkedMarkdown(ctx, t(locale, "continueNothingPending"));
+      return;
+    }
+
+    await sendChunkedMarkdown(
+      ctx,
+      t(locale, "taskBusy", { mode: result.activeMode || "unknown" })
+    );
+  };
 
   bot.start(async (ctx: any) => {
     await sendChunkedMarkdown(
@@ -381,12 +426,7 @@ export function registerHandlers({
       notice: t(locale, "execNotice")
     });
 
-    if (!result.started) {
-      await sendChunkedMarkdown(
-        ctx,
-        t(locale, "taskBusy", { mode: result.activeMode || "unknown" })
-      );
-    }
+    await handlePromptResult(ctx, locale, result);
   });
 
   bot.command("sh", async (ctx: any) => {
@@ -459,12 +499,7 @@ export function registerHandlers({
       notice: t(locale, "autoNotice")
     });
 
-    if (!result.started) {
-      await sendChunkedMarkdown(
-        ctx,
-        t(locale, "taskBusy", { mode: result.activeMode || "unknown" })
-      );
-    }
+    await handlePromptResult(ctx, locale, result);
   });
 
   bot.command("plan", async (ctx: any) => {
@@ -480,12 +515,15 @@ export function registerHandlers({
       notice: t(locale, "planNotice")
     });
 
-    if (!result.started) {
-      await sendChunkedMarkdown(
-        ctx,
-        t(locale, "taskBusy", { mode: result.activeMode || "unknown" })
-      );
-    }
+    await handlePromptResult(ctx, locale, result);
+  });
+
+  bot.command("continue", async (ctx: any) => {
+    const locale = localeOf(ctx.chat.id);
+    const result = await ptyManager.continuePendingPrompt(ctx);
+    await handlePromptResult(ctx, locale, result, {
+      announceContinue: true
+    });
   });
 
   bot.command("model", async (ctx: any) => {
@@ -688,12 +726,7 @@ export function registerHandlers({
       });
       if (route.target === "pty") {
         const result = await ptyManager.sendPrompt(ctx, route.prompt);
-        if (!result.started) {
-          await sendChunkedMarkdown(
-            ctx,
-            t(locale, "taskBusy", { mode: result.activeMode || "unknown" })
-          );
-        }
+        await handlePromptResult(ctx, locale, result);
         return;
       }
 

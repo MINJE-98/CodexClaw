@@ -60,6 +60,7 @@ const MESSAGES: Record<Locale, TranslationCatalog> = {
       "/exec <task> - Force a one-off Codex run without saving project context",
       "/auto <task> - Force a one-off fully automatic Codex run",
       "/plan <task> - Generate a plan only, without direct file modification intent",
+      "/continue - Replay the last blocked same-workdir request once",
       "/model [name|reset] - Show or set the model for this chat",
       "/language [en|zh|zh-HK] - Show or set the system language for this chat",
       "/verbose [on|off] - Show or hide system notices for this chat",
@@ -191,6 +192,21 @@ const MESSAGES: Record<Locale, TranslationCatalog> = {
     planNotice: "Running planning-only Codex task...",
     taskBusy: ({ mode }) =>
       `A ${mode || "unknown"} task is already running. Wait for it to finish or use /interrupt first.`,
+    workspaceContention: ({
+      relativeWorkdir,
+      mode,
+      blockingChatId,
+      continueCommand
+    }) =>
+      joinLines([
+        `Another chat (${blockingChatId}) already has an active Codex ${mode || "task"} in this same workdir: ${relativeWorkdir}.`,
+        "Starting another Codex run in the same workdir can conflict.",
+        `Send ${continueCommand} to replay this blocked request once anyway.`
+      ]),
+    continueStarted: ({ mode }) =>
+      `Replaying the blocked request once (${mode}).`,
+    continueNothingPending:
+      "No blocked request is pending for this chat.",
     codexBusyForShell:
       "A Codex task is currently running. Wait for it to finish or use /interrupt or /new first.",
     shellRequiresConfirmation: ({ command, confirmationCommand }) =>
@@ -449,6 +465,7 @@ const MESSAGES: Record<Locale, TranslationCatalog> = {
       "/exec <task> - 强制执行一次性 Codex 任务，不保存项目上下文",
       "/auto <task> - 强制执行一次性全自动 Codex 任务",
       "/plan <task> - 仅生成计划，不直接修改文件",
+      "/continue - 仅一次继续执行最近一次被同 workdir 冲突拦下的请求",
       "/model [name|reset] - 查看或设置当前 chat 模型",
       "/language [en|zh|zh-HK] - 查看或设置当前 chat 的系统语言",
       "/verbose [on|off] - 显示或隐藏系统提示",
@@ -579,6 +596,20 @@ const MESSAGES: Record<Locale, TranslationCatalog> = {
     planNotice: "正在执行仅规划模式的 Codex 任务...",
     taskBusy: ({ mode }) =>
       `当前已有 ${mode || "unknown"} 任务在运行。请等待完成或先使用 /interrupt。`,
+    workspaceContention: ({
+      relativeWorkdir,
+      mode,
+      blockingChatId,
+      continueCommand
+    }) =>
+      joinLines([
+        `另一个 chat (${blockingChatId}) 已在同一个 workdir 中运行 Codex ${mode || "task"}: ${relativeWorkdir}。`,
+        "在同一 workdir 再启动一个 Codex 任务可能产生冲突。",
+        `如果你确认要继续，只执行一次请发送 ${continueCommand}。`
+      ]),
+    continueStarted: ({ mode }) =>
+      `已继续执行这条被拦下的请求一次 (${mode})。`,
+    continueNothingPending: "当前 chat 没有待继续的被拦截请求。",
     codexBusyForShell:
       "当前有 Codex 任务正在运行。先等待完成，或使用 /interrupt 或 /new。",
     shellRequiresConfirmation: ({ command, confirmationCommand }) =>
