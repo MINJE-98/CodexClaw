@@ -3,7 +3,10 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import type { AppConfig } from "../config.js";
-import { repairNodePtySpawnHelperPermissions } from "../runner/ptyPreflight.js";
+import {
+  repairNodePtySpawnHelperPermissions,
+  type ExecutablePermissionResult
+} from "../runner/ptyPreflight.js";
 import { extractCodexExecResponse } from "../bot/formatter.js";
 import { toErrorMessage } from "../lib/errors.js";
 
@@ -39,6 +42,7 @@ interface HealthcheckOptions {
   telegramLiveCheck?: boolean;
   codexLiveCheck?: boolean;
   codexLiveRunner?: (config: AppConfig) => Promise<CodexLiveCheckResult>;
+  ptyHelperProbe?: () => ExecutablePermissionResult;
 }
 
 interface TelegramGetMeResponse {
@@ -258,21 +262,30 @@ export async function runHealthcheck(
         )
   );
 
-  const ptyHelper = repairNodePtySpawnHelperPermissions();
-  if (ptyHelper.error) {
+  if (config.runner.backend === "sdk") {
     checks.push(
-      makeCheck("node-pty helper", strict ? "fail" : "warn", ptyHelper.error)
-    );
-  } else if (ptyHelper.changed) {
-    checks.push(
-      makeCheck(
-        "node-pty helper",
-        "pass",
-        `Repaired execute permissions: ${ptyHelper.path}`
-      )
+      makeCheck("node-pty helper", "pass", "Not required for sdk backend.")
     );
   } else {
-    checks.push(makeCheck("node-pty helper", "pass", ptyHelper.path));
+    const ptyHelperProbe =
+      options.ptyHelperProbe || repairNodePtySpawnHelperPermissions;
+    const ptyHelper = ptyHelperProbe();
+
+    if (ptyHelper.error) {
+      checks.push(
+        makeCheck("node-pty helper", strict ? "fail" : "warn", ptyHelper.error)
+      );
+    } else if (ptyHelper.changed) {
+      checks.push(
+        makeCheck(
+          "node-pty helper",
+          "pass",
+          `Repaired execute permissions: ${ptyHelper.path}`
+        )
+      );
+    } else {
+      checks.push(makeCheck("node-pty helper", "pass", ptyHelper.path));
+    }
   }
 
   const liveTelegramCheck = Boolean(options.telegramLiveCheck);

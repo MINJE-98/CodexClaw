@@ -18,6 +18,7 @@ jobs:
     env:
       BOT_TOKEN: "ci-bot-token"
       ALLOWED_USER_IDS: "1"
+      CODEX_BACKEND: "sdk"
       CODEX_COMMAND: "node"
       CODEX_WORKDIR: "."
       WORKSPACE_ROOT: "."

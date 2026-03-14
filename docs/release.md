@@ -38,7 +38,7 @@ Manual checks:
 git checkout main
 git pull --ff-only
 BOT_TOKEN=dummy-token ALLOWED_USER_IDS=1 npm run release:check
-git tag v0.2.0
+git tag v0.2.1
 git push origin main --tags
 ```
 
