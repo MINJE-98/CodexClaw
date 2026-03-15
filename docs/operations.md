@@ -17,10 +17,10 @@ pm2 start ecosystem.config.cjs
 Common PM2 commands:
 
 ```bash
-pm2 status codex-telegram-claws
-pm2 logs codex-telegram-claws
-pm2 restart codex-telegram-claws
-pm2 stop codex-telegram-claws
+pm2 status CodexClaw
+pm2 logs CodexClaw
+pm2 restart CodexClaw
+pm2 stop CodexClaw
 pm2 save
 ```
 

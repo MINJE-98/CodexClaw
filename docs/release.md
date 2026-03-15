@@ -5,6 +5,29 @@
 - Use `v0.x` tags for beta releases.
 - Do not cut `v1.0.0` until CI, supervisor deployment, and Telegram smoke checks are part of the normal release path.
 
+## v1.0.0 Release Gate
+
+Treat `v1.0.0` as a stability contract, not just a bigger tag.
+
+Required before tagging `v1.0.0`:
+
+- `CODEX_BACKEND=sdk` is the documented default and the normal production path
+- natural-language repo creation works in Telegram, including sibling repo creation under `WORKSPACE_ROOT`
+- `npm run release:check` passes locally and in GitHub Actions
+- `npm run healthcheck:live` passes with operator-owned credentials
+- `npm run telegram:smoke` passes against the production bot token or a release-candidate bot token
+- PM2 or the chosen process supervisor has been verified on the release target host
+- `README.md`, `docs/operations.md`, and this document match the current commands and behavior
+- repository metadata is current: description, topics, release notes, and secrets documentation
+
+Recommended manual release-candidate checks on Telegram:
+
+- send a normal coding request and verify streaming still works
+- create a sibling repo with `/gh create repo my-release-smoke-repo`
+- create a sibling repo with `/gh create repo my-release-smoke-repo`, then confirm it with `/gh confirm`
+- verify `/repo`, `/continue`, `/gh push`, `/gh confirm`, and `/mcp list` still behave correctly in the same chat
+- verify same-workdir contention still blocks a second chat until `/continue`
+
 ## Pre-Release Checklist
 
 Run locally:
@@ -32,13 +55,46 @@ Manual checks:
 - verify no second bot-managed chat can start a same-workdir Codex run without the explicit `/continue` override
 - record only pass/fail status in release notes; keep raw live output private to the operator who ran the checks
 
+## Repository Metadata
+
+Keep GitHub repository topics aligned with the current product surface. The target topic set for this repo is:
+
+- `telegram-bot`
+- `codex`
+- `openai`
+- `remote-coding`
+- `ai-agent`
+- `github-integration`
+- `mcp`
+- `subagents`
+- `developer-tools`
+- `claude-code`
+- `skill`
+
+Apply them with GitHub CLI:
+
+```bash
+gh repo edit MackDing/CodexClaw \
+  --add-topic telegram-bot \
+  --add-topic codex \
+  --add-topic openai \
+  --add-topic remote-coding \
+  --add-topic ai-agent \
+  --add-topic github-integration \
+  --add-topic mcp \
+  --add-topic subagents \
+  --add-topic developer-tools \
+  --add-topic claude-code \
+  --add-topic skill
+```
+
 ## Tag And Publish
 
 ```bash
 git checkout main
 git pull --ff-only
 BOT_TOKEN=dummy-token ALLOWED_USER_IDS=1 npm run release:check
-git tag v0.2.1
+git tag v0.2.2
 git push origin main --tags
 ```
 
@@ -49,7 +105,7 @@ Pushing a `v*` tag triggers the GitHub release workflow.
 ```bash
 git checkout <previous-stable-tag>
 npm install
-pm2 restart codex-telegram-claws
+pm2 restart CodexClaw
 ```
 
 After rollback, rerun:

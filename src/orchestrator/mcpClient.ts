@@ -166,7 +166,7 @@ export class McpClient {
 
     const client = new Client(
       {
-        name: "codex-telegram-claws",
+        name: "CodexClaw",
         version: "0.1.0"
       },
       {

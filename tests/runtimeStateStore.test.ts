@@ -11,7 +11,7 @@ test("runtime state store saves and loads MCP and skill state", async () => {
   const store = new RuntimeStateStore({
     config: {
       app: {
-        name: "codex-telegram-claws",
+        name: "CodexClaw",
         stateFile: file
       }
     }
@@ -34,7 +34,8 @@ test("runtime state store saves and loads MCP and skill state", async () => {
               lastSessionId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
               lastMode: null,
               lastExitCode: null,
-              lastExitSignal: null
+              lastExitSignal: null,
+              lastWorkflowPhase: null
             }
           }
         }
@@ -67,7 +68,8 @@ test("runtime state store saves and loads MCP and skill state", async () => {
             lastSessionId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
             lastMode: null,
             lastExitCode: null,
-            lastExitSignal: null
+            lastExitSignal: null,
+            lastWorkflowPhase: null
           }
         }
       }

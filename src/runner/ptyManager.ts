@@ -19,6 +19,11 @@ import { toErrorMessage } from "../lib/errors.js";
 import { repairNodePtySpawnHelperPermissions } from "./ptyPreflight.js";
 type SessionMode = "pty" | "exec" | "sdk";
 type ExitSignal = number | NodeJS.Signals | null;
+type WorkflowPhase =
+  | "brainstorming"
+  | "planning"
+  | "implementing"
+  | "verifying";
 
 interface PtyProcess {
   write(input: string): void;
@@ -73,6 +78,7 @@ interface ProjectConversationState {
   lastMode: SessionMode | null;
   lastExitCode: number | null;
   lastExitSignal: ExitSignal;
+  lastWorkflowPhase: WorkflowPhase | null;
 }
 
 interface ChatRuntimeState {
@@ -106,6 +112,7 @@ interface RunnerSession {
   write: ((input: string) => void) | null;
   interrupt: (() => void) | null;
   close: (() => void) | null;
+  workflowPhase: WorkflowPhase | null;
 }
 
 interface SessionOptions {
@@ -179,6 +186,7 @@ interface StoredProjectConversationState {
   lastMode?: unknown;
   lastExitCode?: unknown;
   lastExitSignal?: unknown;
+  lastWorkflowPhase?: unknown;
 }
 
 interface StoredChatRuntimeState {
@@ -206,6 +214,7 @@ export interface PtyManagerSnapshot {
           lastMode: SessionMode | null;
           lastExitCode: number | null;
           lastExitSignal: ExitSignal;
+          lastWorkflowPhase: WorkflowPhase | null;
         }
       >;
     }
@@ -229,6 +238,8 @@ export interface PtyManagerStatus {
   workspaceRoot: string;
   command: string;
   mcpServers: string[];
+  workflowSystem: "superpowers";
+  workflowPhase: WorkflowPhase | "working" | "none";
 }
 
 interface PtyManagerOptions {
@@ -271,6 +282,15 @@ function toLocale(value: string): Locale {
   return isLocale(value) ? value : "en";
 }
 
+function isWorkflowPhase(value: unknown): value is WorkflowPhase {
+  return (
+    value === "brainstorming" ||
+    value === "planning" ||
+    value === "implementing" ||
+    value === "verifying"
+  );
+}
+
 function isAbortError(error: unknown): boolean {
   if (!error || typeof error !== "object") {
     return false;
@@ -311,6 +331,85 @@ function summarizeSdkItem(item: ThreadItem, verbose: boolean): string | null {
     default:
       return null;
   }
+}
+
+const WORKFLOW_PHASE_MARKERS: ReadonlyArray<{
+  phase: WorkflowPhase;
+  markers: readonly string[];
+}> = [
+  {
+    phase: "brainstorming",
+    markers: [
+      "using `brainstorming`",
+      "brainstorming gate",
+      "offer visual companion",
+      "ask one clarifying question",
+      "propose 2-3 approaches",
+      "present design and get approval"
+    ]
+  },
+  {
+    phase: "planning",
+    markers: [
+      "implementation plan",
+      "plan complete",
+      "write the implementation plan",
+      "writing the implementation plan",
+      "moving into implementation planning",
+      "implementation steps"
+    ]
+  },
+  {
+    phase: "implementing",
+    markers: [
+      "moving into file edits",
+      "i'm implementing",
+      "i’m implementing",
+      "i'm adding",
+      "i’m adding",
+      "[files]",
+      "apply_patch"
+    ]
+  },
+  {
+    phase: "verifying",
+    markers: [
+      "verification-before-completion",
+      "running validation",
+      "full verification",
+      "fresh verification",
+      "final verification",
+      "all green",
+      "all passed"
+    ]
+  }
+];
+
+function detectWorkflowPhase(rawText: string): WorkflowPhase | null {
+  const normalized = String(rawText || "").toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  let bestMatch: { phase: WorkflowPhase; index: number } | null = null;
+
+  for (const entry of WORKFLOW_PHASE_MARKERS) {
+    for (const marker of entry.markers) {
+      const index = normalized.lastIndexOf(marker);
+      if (index === -1) {
+        continue;
+      }
+
+      if (!bestMatch || index >= bestMatch.index) {
+        bestMatch = {
+          phase: entry.phase,
+          index
+        };
+      }
+    }
+  }
+
+  return bestMatch?.phase || null;
 }
 
 export class PtyManager {
@@ -382,7 +481,8 @@ export class PtyManager {
             lastSessionId: "",
             lastMode: null,
             lastExitCode: null,
-            lastExitSignal: null
+            lastExitSignal: null,
+            lastWorkflowPhase: null
           }
         ]
       ])
@@ -408,7 +508,8 @@ export class PtyManager {
       lastSessionId: "",
       lastMode: null,
       lastExitCode: null,
-      lastExitSignal: null
+      lastExitSignal: null,
+      lastWorkflowPhase: null
     };
 
     state.projectStates.set(resolvedWorkdir, projectState);
@@ -831,7 +932,8 @@ export class PtyManager {
       ),
       write: null,
       interrupt: null,
-      close: null
+      close: null,
+      workflowPhase: null
     };
 
     this.sessions.set(key, session);
@@ -843,6 +945,13 @@ export class PtyManager {
 
     const sessionId = extractSessionId(session.rawBuffer);
     this.rememberSessionId(session, sessionId);
+  }
+
+  captureWorkflowPhase(session: RunnerSession): void {
+    const workflowPhase = detectWorkflowPhase(session.rawBuffer);
+    if (workflowPhase) {
+      session.workflowPhase = workflowPhase;
+    }
   }
 
   updateSdkRenderableItem(session: RunnerSession, item: ThreadItem): void {
@@ -857,6 +966,7 @@ export class PtyManager {
         );
       }
       session.rawBuffer = this.composeSdkRawBuffer(session);
+      this.captureWorkflowPhase(session);
       return;
     }
 
@@ -866,6 +976,7 @@ export class PtyManager {
 
     session.renderableItems.set(item.id, text);
     session.rawBuffer = this.composeSdkRawBuffer(session);
+    this.captureWorkflowPhase(session);
   }
 
   composeSdkRawBuffer(session: RunnerSession): string {
@@ -889,6 +1000,7 @@ export class PtyManager {
     projectState.lastMode = session.mode;
     projectState.lastExitCode = exitCode;
     projectState.lastExitSignal = signal;
+    projectState.lastWorkflowPhase = session.workflowPhase;
     this.onChange?.(this.exportState());
 
     if (this.sessions.get(session.chatId) === session) {
@@ -928,6 +1040,7 @@ export class PtyManager {
         );
       }
       this.captureSessionMetadata(session);
+      this.captureWorkflowPhase(session);
       session.throttledFlush();
     });
   }
@@ -980,6 +1093,7 @@ export class PtyManager {
         );
       }
       this.captureSessionMetadata(session);
+      this.captureWorkflowPhase(session);
       session.throttledFlush();
     });
 
@@ -1483,6 +1597,7 @@ export class PtyManager {
     projectState.lastMode = null;
     projectState.lastExitCode = null;
     projectState.lastExitSignal = null;
+    projectState.lastWorkflowPhase = null;
     this.onChange?.(this.exportState());
 
     return {
@@ -1543,7 +1658,8 @@ export class PtyManager {
           lastSessionId: projectState.lastSessionId || "",
           lastMode: projectState.lastMode,
           lastExitCode: projectState.lastExitCode,
-          lastExitSignal: projectState.lastExitSignal
+          lastExitSignal: projectState.lastExitSignal,
+          lastWorkflowPhase: projectState.lastWorkflowPhase
         };
       }
 
@@ -1609,7 +1725,12 @@ export class PtyManager {
               rawProjectState?.lastExitSignal === null ||
               rawProjectState?.lastExitSignal === undefined
                 ? null
-                : (rawProjectState.lastExitSignal as ExitSignal)
+                : (rawProjectState.lastExitSignal as ExitSignal),
+            lastWorkflowPhase: isWorkflowPhase(
+              rawProjectState?.lastWorkflowPhase
+            )
+              ? rawProjectState.lastWorkflowPhase
+              : null
           });
         }
       }
@@ -1619,7 +1740,8 @@ export class PtyManager {
           lastSessionId: "",
           lastMode: null,
           lastExitCode: null,
-          lastExitSignal: null
+          lastExitSignal: null,
+          lastWorkflowPhase: null
         });
       }
 
@@ -1668,7 +1790,11 @@ export class PtyManager {
       relativeWorkdir: this.getRelativeWorkdir(key),
       workspaceRoot: this.config.workspace.root,
       command: this.config.runner.command,
-      mcpServers: this.config.mcp.servers.map((server) => server.name)
+      mcpServers: this.config.mcp.servers.map((server) => server.name),
+      workflowSystem: "superpowers",
+      workflowPhase: session
+        ? (session.workflowPhase ?? "working")
+        : (projectState.lastWorkflowPhase ?? "none")
     };
   }
 

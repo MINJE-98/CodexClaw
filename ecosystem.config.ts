@@ -6,7 +6,7 @@ const repoRoot = path.dirname(fileURLToPath(import.meta.url));
 const config = {
   apps: [
     {
-      name: "codex-telegram-claws",
+      name: "CodexClaw",
       cwd: repoRoot,
       script: "src/index.ts",
       interpreter: "node_modules/.bin/tsx",

@@ -202,6 +202,40 @@ test("pty manager status exposes runner workdir and MCP server names", () => {
   assert.equal(status.workspaceRoot, process.cwd());
   assert.deepEqual(status.mcpServers, ["context7", "sequential-thinking"]);
   assert.equal(status.active, false);
+  assert.equal(status.workflowPhase, "none");
+});
+
+test("pty manager tracks the last detected superpowers workflow phase per project", async () => {
+  const manager = createManager({
+    backend: "sdk",
+    codexClientFactory: createFakeCodexClient([
+      {
+        events: async function* () {
+          yield {
+            type: "item.completed",
+            item: {
+              id: "item-1",
+              type: "agent_message",
+              text: "I’m using `brainstorming` first, then `writing-plans`."
+            }
+          };
+          yield {
+            type: "turn.completed",
+            usage: {
+              input_tokens: 1,
+              cached_input_tokens: 0,
+              output_tokens: 1
+            }
+          };
+        }
+      }
+    ])
+  });
+
+  await manager.sendPrompt({ chat: { id: 7 } }, "design the change");
+  await waitFor(() => !manager.getStatus(7).active);
+
+  assert.equal(manager.getStatus(7).workflowPhase, "brainstorming");
 });
 
 test("pty manager lists git projects under workspace root", () => {

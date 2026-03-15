@@ -16,11 +16,13 @@ import { toErrorMessage } from "../lib/errors.js";
 import type { Router } from "../orchestrator/router.js";
 import type { PtyManager } from "../runner/ptyManager.js";
 import type { ShellManager } from "../runner/shellManager.js";
+import type { DevServerManager } from "../runner/devServerManager.js";
 import type { SkillRegistry } from "../orchestrator/skillRegistry.js";
 
 interface SkillResultPayload {
   text?: string;
   testJobId?: string;
+  switchToRepo?: string;
 }
 
 interface RegisterHandlersOptions {
@@ -28,6 +30,7 @@ interface RegisterHandlersOptions {
   router: Router;
   ptyManager: PtyManager;
   shellManager: ShellManager;
+  devServerManager: DevServerManager;
   skills: Record<string, any>;
   skillRegistry: SkillRegistry;
   scheduler: Scheduler;
@@ -82,6 +85,28 @@ async function sendSkillResult(
   }
 }
 
+async function applySkillResult(
+  ctx: any,
+  result: string | SkillResultPayload,
+  locale: Locale,
+  ptyManager: PtyManager
+): Promise<void> {
+  const payload = typeof result === "string" ? { text: result } : { ...result };
+
+  if (payload.switchToRepo) {
+    try {
+      ptyManager.switchWorkdir(ctx.chat.id, payload.switchToRepo);
+    } catch (error) {
+      const suffix = t(locale, "repoSwitchFailed", {
+        error: toErrorMessage(error)
+      });
+      payload.text = payload.text ? `${payload.text}\n\n${suffix}` : suffix;
+    }
+  }
+
+  await sendSkillResult(ctx, payload, locale);
+}
+
 function formatProjectLines(
   projects: Array<{ path: string; relativePath: string; name?: string }>,
   currentWorkdir: string
@@ -125,6 +150,7 @@ export function registerHandlers({
   router,
   ptyManager,
   shellManager,
+  devServerManager,
   skills,
   skillRegistry,
   scheduler,
@@ -485,6 +511,119 @@ export function registerHandlers({
     await sendChunkedMarkdown(ctx, t(locale, "shellResult", { result }));
   });
 
+  bot.command("dev", async (ctx: any) => {
+    const locale = localeOf(ctx.chat.id);
+    const payload = extractCommandPayload(ctx.message.text, "dev");
+    const subcommand = (payload || "status").trim().toLowerCase();
+    const runtimeStatus = ptyManager.getStatus(ctx.chat.id);
+    const workdir = runtimeStatus.workdir;
+    const relativeWorkdir = runtimeStatus.relativeWorkdir;
+
+    if (!subcommand || subcommand === "status") {
+      const devStatus = devServerManager.getStatus(workdir);
+      await sendChunkedMarkdown(
+        ctx,
+        t(locale, "devStatus", {
+          devStatus,
+          relativeWorkdir
+        })
+      );
+      return;
+    }
+
+    if (subcommand === "start") {
+      const result = await devServerManager.start({
+        workdir,
+        chatId: ctx.chat.id
+      });
+
+      if (result.started) {
+        await sendChunkedMarkdown(
+          ctx,
+          t(locale, "devStarted", {
+            command: result.command,
+            scriptName: result.scriptName,
+            relativeWorkdir
+          })
+        );
+        return;
+      }
+
+      if (result.reason === "already_running") {
+        await sendChunkedMarkdown(
+          ctx,
+          t(locale, "devAlreadyRunning", {
+            relativeWorkdir,
+            startedByChatId: result.status.startedByChatId || "unknown",
+            command: result.status.command || "unknown"
+          })
+        );
+        return;
+      }
+
+      if (result.reason === "no_package_json") {
+        await sendChunkedMarkdown(
+          ctx,
+          t(locale, "devNoPackageJson", { relativeWorkdir })
+        );
+        return;
+      }
+
+      if (result.reason === "no_script") {
+        await sendChunkedMarkdown(
+          ctx,
+          t(locale, "devNoScript", {
+            relativeWorkdir,
+            availableScripts: result.availableScripts.join(", ") || "(none)"
+          })
+        );
+        return;
+      }
+
+      await sendChunkedMarkdown(
+        ctx,
+        t(locale, "devSpawnFailed", { error: result.error })
+      );
+      return;
+    }
+
+    if (subcommand === "stop") {
+      const stopped = devServerManager.stop(workdir);
+      await sendChunkedMarkdown(
+        ctx,
+        t(locale, stopped ? "devStopped" : "devNotRunning", {
+          relativeWorkdir
+        })
+      );
+      return;
+    }
+
+    if (subcommand === "logs") {
+      await sendChunkedMarkdown(
+        ctx,
+        t(locale, "devLogs", {
+          relativeWorkdir,
+          logs: devServerManager.getLogs(workdir)
+        })
+      );
+      return;
+    }
+
+    if (subcommand === "url") {
+      const url = devServerManager.getUrl(workdir);
+      await sendChunkedMarkdown(
+        ctx,
+        t(locale, url ? "devUrl" : "devNoUrl", {
+          relativeWorkdir,
+          url: url || ""
+        })
+      );
+      return;
+    }
+
+    await sendChunkedMarkdown(ctx, t(locale, "usageDev"));
+  });
+
   bot.command("auto", async (ctx: any) => {
     const locale = localeOf(ctx.chat.id);
     const task = extractCommandPayload(ctx.message.text, "auto");
@@ -652,11 +791,11 @@ export function registerHandlers({
       const text = extractCommandPayload(ctx.message.text, "gh") || "help";
       const result = await skills.github.execute({
         text: `/gh ${text}`,
-        ctx,
+        chatId: ctx.chat.id,
         workdir: ptyManager.getStatus(ctx.chat.id).workdir,
         locale
       });
-      await sendSkillResult(ctx, result, locale);
+      await applySkillResult(ctx, result, locale, ptyManager);
     } catch (error) {
       await sendChunkedMarkdown(
         ctx,
@@ -675,7 +814,7 @@ export function registerHandlers({
     try {
       const text = ctx.message.text.trim();
       const result = await skills.mcp.execute({ text, ctx, locale });
-      await sendSkillResult(ctx, result, locale);
+      await applySkillResult(ctx, result, locale, ptyManager);
     } catch (error) {
       await sendChunkedMarkdown(
         ctx,
@@ -741,11 +880,11 @@ export function registerHandlers({
 
       const result = await skill.execute({
         text: route.payload,
-        ctx,
+        chatId: ctx.chat.id,
         workdir: ptyManager.getStatus(ctx.chat.id).workdir,
         locale
       });
-      await sendSkillResult(ctx, result, locale);
+      await applySkillResult(ctx, result, locale, ptyManager);
     } catch (error) {
       await sendChunkedMarkdown(
         ctx,

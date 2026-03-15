@@ -12,6 +12,7 @@ import { McpSkill } from "./orchestrator/skills/mcpSkill.js";
 import { GitHubSkill } from "./orchestrator/skills/githubSkill.js";
 import { PtyManager } from "./runner/ptyManager.js";
 import { ShellManager } from "./runner/shellManager.js";
+import { DevServerManager } from "./runner/devServerManager.js";
 import { Scheduler } from "./cron/scheduler.js";
 import { toErrorMessage } from "./lib/errors.js";
 
@@ -96,6 +97,7 @@ ptyManager.restoreState(runtimeState.runner);
 const shellManager = new ShellManager({
   config
 });
+const devServerManager = new DevServerManager();
 
 const scheduler = new Scheduler({
   bot,
@@ -108,6 +110,7 @@ registerHandlers({
   router,
   ptyManager,
   shellManager,
+  devServerManager,
   skills,
   skillRegistry,
   scheduler,
@@ -123,12 +126,13 @@ bot.catch(async (error: unknown, ctx: any) => {
 });
 
 await bot.launch();
-console.log("codex-telegram-claws started.");
+console.log("CodexClaw started.");
 
 async function shutdown(signal: string): Promise<void> {
   console.log(`Shutting down by ${signal}...`);
   scheduler.stop();
   await ptyManager?.shutdown();
+  await devServerManager.shutdown();
   await mcpClient?.closeAll();
   bot.stop(signal);
   process.exit(0);

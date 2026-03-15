@@ -1,10 +1,57 @@
-# Codex Telegram Claws
+# CodexClaw
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js 20+](https://img.shields.io/badge/node-20%2B-green.svg)](https://nodejs.org/en/download/current)
 
 A Telegram bot that gives you remote access to `@openai/codex` through a Node.js runtime with two Codex backends: the Codex SDK and the legacy CLI/PTy path.  
-It is strictly inspired by `RichardAtCT/claude-code-telegram`, but this project is implemented for Codex SDK/CLI + MCP + Subagent routing.
+It is strictly inspired by `RichardAtCT/claude-code-telegram`, but this project is implemented for Claude Code SDK/CLI + MCP + Subagent routing.
+
+## Use This Like A Skill
+
+### What It Does
+
+- installs a Telegram-facing Codex runtime
+- keeps Codex live sessions scoped to `chat + repo`
+- manages bot-side MCP and GitHub subagents
+- exposes repo switching, status, and minimal frontend dev-server control from Telegram
+
+### Install
+
+```bash
+git clone https://github.com/MackDing/CodexClaw.git
+cd CodexClaw
+npm install
+cp .env.example .env
+```
+
+### Configure The Minimum
+
+```bash
+BOT_TOKEN=123456789:telegram-token
+ALLOWED_USER_IDS=123456789
+STATE_FILE=.codex-telegram-claws-state.json
+WORKSPACE_ROOT=.
+CODEX_WORKDIR=.
+CODEX_BACKEND=sdk
+```
+
+### Start The Skill
+
+```bash
+npm run start
+```
+
+### Telegram Quick Use
+
+```text
+/status
+/repo
+/skill
+/dev status
+/gh create repo my-new-app
+```
+
+For agent-oriented setup, see [SKILL.md](/Users/ding/Documents/Code/Github/CodexClaw/SKILL.md).
 
 ## What Is This?
 
@@ -32,8 +79,8 @@ Key design goals:
 ### Install
 
 ```bash
-git clone https://github.com/MackDing/codex-telegram-claws.git
-cd codex-telegram-claws
+git clone https://github.com/MackDing/CodexClaw.git
+cd CodexClaw
 npm install
 ```
 
@@ -129,8 +176,8 @@ Core modules:
 - `src/runner/ptyManager.ts`: Codex runner abstraction for SDK threads, CLI/PTy sessions, and CLI exec fallback
 - `src/cron/scheduler.ts`: proactive scheduled push
 
-Enterprise target architecture: [docs/enterprise-architecture.md](/Users/ding/Documents/Code/Github/codex-telegram-claws/docs/enterprise-architecture.md)
-Enterprise Phase 1 roadmap: [docs/phase-1-roadmap.md](/Users/ding/Documents/Code/Github/codex-telegram-claws/docs/phase-1-roadmap.md)
+Enterprise target architecture: [docs/enterprise-architecture.md](/Users/ding/Documents/Code/Github/CodexClaw/docs/enterprise-architecture.md)
+Enterprise Phase 1 roadmap: [docs/phase-1-roadmap.md](/Users/ding/Documents/Code/Github/CodexClaw/docs/phase-1-roadmap.md)
 
 ## Routing and MCP Boundary
 
@@ -164,9 +211,9 @@ How they are triggered:
 
 Where this happens:
 
-- Router decision order: [router.ts](/Users/ding/Documents/Code/Github/codex-telegram-claws/src/orchestrator/router.ts)
-- Skill toggles per chat: [skillRegistry.ts](/Users/ding/Documents/Code/Github/codex-telegram-claws/src/orchestrator/skillRegistry.ts)
-- Telegram command entrypoints: [handlers.ts](/Users/ding/Documents/Code/Github/codex-telegram-claws/src/bot/handlers.ts)
+- Router decision order: [router.ts](/Users/ding/Documents/Code/Github/CodexClaw/src/orchestrator/router.ts)
+- Skill toggles per chat: [skillRegistry.ts](/Users/ding/Documents/Code/Github/CodexClaw/src/orchestrator/skillRegistry.ts)
+- Telegram command entrypoints: [handlers.ts](/Users/ding/Documents/Code/Github/CodexClaw/src/bot/handlers.ts)
 
 Operationally, subagents are the bot's control plane. Codex remains the coding execution plane.
 
@@ -176,7 +223,7 @@ General:
 
 - `/start` - bootstrap message
 - `/help` - command summary
-- `/status` - show current chat status, active runner mode, workdir, model override, MCP servers
+- `/status` - show current chat status, active runner mode, workdir, model override, MCP servers, and the internal superpowers workflow phase
 - `/pwd` - show the current project directory for this chat
 - `/repo` - list switchable git projects under `WORKSPACE_ROOT`
 - `/repo <name>` - switch the current chat to another project
@@ -196,6 +243,11 @@ General:
 - `/skill status` - alias of `/skill list`
 - `/skill on <name>` - enable a skill for the current chat
 - `/skill off <name>` - disable a skill for the current chat
+- `/dev start` - start the current repo frontend server (`dev`, then `start`)
+- `/dev stop` - stop the current repo frontend server
+- `/dev status` - show the current repo frontend server status
+- `/dev logs` - show the current repo frontend server log tail
+- `/dev url` - show the detected local frontend URL
 - `/sh <command>` - run a safe allowlisted Linux command in the current project (disabled by default)
 - `/sh --confirm <command>` - confirm a dangerous command when writable mode is enabled
 - `/restart` - restart the bot process explicitly from Telegram
@@ -215,9 +267,11 @@ MCP skill:
 
 GitHub skill:
 
-- `/gh commit "feat: message"` -> `git add .` + commit + push
-- `/gh push` -> push current branch
-- `/gh create repo my-new-repo` -> create repo and bind origin
+- `/gh commit "feat: message"` -> explicit GitHub write action
+- `/gh push` -> explicit push for the current branch
+- `/gh create repo my-new-repo` -> explicit sibling repo creation under `WORKSPACE_ROOT`
+- `/gh confirm` -> confirm the pending GitHub write action and execute it
+- plain-text write requests such as `create repo ...`, `commit`, or `push` are intercepted and converted into guidance; they no longer execute GitHub writes directly
 - `/gh run tests` -> launch test job
 - `/gh test status <jobId>` -> read test status/output tail
 
@@ -229,8 +283,12 @@ Telegram adaptation notes:
 - `/new` is implemented by the bot and resets the current chat session
 - `/new` only clears the current project's saved Codex conversation slot
 - `/status` is implemented by the bot and reports local runtime state
+- `/status` also surfaces the internal `superpowers` workflow system and the last detected workflow phase for the current chat/project session
 - `/repo` is implemented by the bot and switches the per-chat working directory inside `WORKSPACE_ROOT`
 - `/skill` is implemented by the bot and keeps per-chat skill switches in runtime state
+- `/skill` only lists toggleable bot skills; `superpowers` is shown as an internal workflow, not a toggleable skill
+- `/dev` is implemented by the bot and manages one frontend server per repo workdir, shared across chats
+- `/dev start` prefers `package.json` script `dev` and falls back to `start`
 - `/sh` is implemented by the bot, never invokes a shell interpreter, and only accepts configured command prefixes
 - `/sh` is read-only by default; dangerous prefixes can be configured and require `--confirm` when writable mode is enabled
 - `/plan` translates to a planning-only prompt instead of passing a raw `/plan` slash command to Codex
@@ -273,6 +331,23 @@ The bot now blocks a second Codex run when another bot-managed chat already has 
 - switching projects clears the pending blocked request
 - this guard only sees bot-managed chats in this process; if you also use Codex directly in a terminal, use a separate git worktree to avoid conflicts
 
+## Frontend Debugging Layer
+
+The bot includes a minimal repo-scoped frontend runtime layer:
+
+- `/dev start` starts the current repo's frontend command
+- `/dev stop` stops it
+- `/dev status` shows whether it is running
+- `/dev logs` returns the recent output tail
+- `/dev url` returns the first detected local URL from logs
+
+Selection rules:
+
+- prefer `package.json` script `dev`
+- if `dev` is missing, fall back to `start`
+- keep only one active frontend server per repo workdir
+- do not expose arbitrary shell execution through `/dev`
+
 ## Backend Selection
 
 Choose the execution backend with `CODEX_BACKEND`:
@@ -293,6 +368,8 @@ CODEX_SDK_NETWORK_ACCESS_ENABLED=true
 CODEX_SDK_WEB_SEARCH_MODE=live
 CODEX_SDK_ADDITIONAL_DIRECTORIES=["/abs/path/extra-worktree"]
 ```
+
+If `CODEX_SDK_SANDBOX_MODE` is unset, the bot now defaults SDK threads to `workspace-write` so normal coding tasks can modify files inside the active repo. Set it explicitly to `read-only` only if you want analysis-only behavior.
 
 CLI-related options:
 
@@ -391,13 +468,16 @@ Recommended local release gate:
 ```bash
 BOT_TOKEN=dummy-token ALLOWED_USER_IDS=1 npm run release:check
 npm run healthcheck:live
+npm run telegram:smoke
 ```
+
+`v1.0.0` should only be tagged after the full release gate, Telegram smoke checks, and repository metadata sync are complete. The detailed checklist and topic sync command live in [release.md](/Users/ding/Documents/Code/Github/CodexClaw/docs/release.md).
 
 Release references:
 
-- [operations.md](/Users/ding/Documents/Code/Github/codex-telegram-claws/docs/operations.md)
-- [release.md](/Users/ding/Documents/Code/Github/codex-telegram-claws/docs/release.md)
-- [ecosystem.config.cjs](/Users/ding/Documents/Code/Github/codex-telegram-claws/ecosystem.config.cjs) - PM2 compatibility shim
+- [operations.md](/Users/ding/Documents/Code/Github/CodexClaw/docs/operations.md)
+- [release.md](/Users/ding/Documents/Code/Github/CodexClaw/docs/release.md)
+- [ecosystem.config.cjs](/Users/ding/Documents/Code/Github/CodexClaw/ecosystem.config.cjs) - PM2 compatibility shim
 
 ## Security Baseline
 
@@ -422,9 +502,9 @@ Basic flow:
 
 ```bash
 pm2 start ecosystem.config.cjs
-pm2 status codex-telegram-claws
-pm2 logs codex-telegram-claws
-pm2 restart codex-telegram-claws
+pm2 status CodexClaw
+pm2 logs CodexClaw
+pm2 restart CodexClaw
 ```
 
 Run exactly one polling process per bot token.

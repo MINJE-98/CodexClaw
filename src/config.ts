@@ -328,10 +328,12 @@ export function loadConfig(): AppConfig {
       process.env.CODEX_SDK_SKIP_GIT_REPO_CHECK,
       true
     ),
-    sandboxMode: parseEnum<CodexSandboxMode>(
-      process.env.CODEX_SDK_SANDBOX_MODE,
-      ["read-only", "workspace-write", "danger-full-access"]
-    ),
+    sandboxMode:
+      parseEnum<CodexSandboxMode>(process.env.CODEX_SDK_SANDBOX_MODE, [
+        "read-only",
+        "workspace-write",
+        "danger-full-access"
+      ]) || (runnerBackend === "sdk" ? "workspace-write" : undefined),
     approvalPolicy: parseEnum<CodexApprovalPolicy>(
       process.env.CODEX_SDK_APPROVAL_POLICY,
       ["never", "on-request", "on-failure", "untrusted"]
@@ -361,7 +363,7 @@ export function loadConfig(): AppConfig {
 
   return {
     app: {
-      name: "codex-telegram-claws",
+      name: "CodexClaw",
       stateFile: resolveFile(
         process.env.STATE_FILE,
         path.join(process.cwd(), ".codex-telegram-claws-state.json")

@@ -72,6 +72,15 @@ function createDependencies(
   overrides: {
     sendPrompt?: () => Promise<unknown>;
     continuePendingPrompt?: () => Promise<unknown>;
+    routeMessage?: (text: string) => Promise<unknown>;
+    githubExecute?: () => Promise<unknown>;
+    getStatus?: () => Record<string, unknown>;
+    switchWorkdir?: (chatId: string | number, target: string) => unknown;
+    devStart?: () => Promise<unknown>;
+    devStatus?: () => Record<string, unknown>;
+    devStop?: () => boolean;
+    devLogs?: () => string;
+    devUrl?: () => string | null;
   } = {}
 ) {
   const bot = new FakeBot();
@@ -89,33 +98,46 @@ function createDependencies(
         started: true,
         mode: "sdk"
       })),
-    getStatus: () => ({
-      backend: "sdk",
-      active: false,
-      activeMode: null,
-      lastMode: null,
-      lastExitCode: null,
-      lastExitSignal: null,
-      projectSessionId: null,
-      preferredModel: null,
-      language: "en",
-      verboseOutput: false,
-      ptySupported: null,
-      workdir: process.cwd(),
-      relativeWorkdir: ".",
-      workspaceRoot: process.cwd(),
-      command: "codex",
-      mcpServers: []
-    })
+    getStatus:
+      overrides.getStatus ||
+      (() => ({
+        backend: "sdk",
+        active: false,
+        activeMode: null,
+        lastMode: null,
+        lastExitCode: null,
+        lastExitSignal: null,
+        projectSessionId: null,
+        preferredModel: null,
+        language: "en",
+        verboseOutput: false,
+        ptySupported: null,
+        workdir: process.cwd(),
+        relativeWorkdir: ".",
+        workspaceRoot: process.cwd(),
+        command: "codex",
+        mcpServers: [],
+        workflowSystem: "superpowers",
+        workflowPhase: "none"
+      })),
+    getRecentProjects: () => [],
+    switchWorkdir:
+      overrides.switchWorkdir ||
+      (() => ({
+        workdir: process.cwd(),
+        relativePath: "."
+      }))
   };
 
   registerHandlers({
     bot,
     router: {
-      routeMessage: async (text: string) => ({
-        target: "pty" as const,
-        prompt: text
-      })
+      routeMessage:
+        overrides.routeMessage ||
+        (async (text: string) => ({
+          target: "pty" as const,
+          prompt: text
+        }))
     } as any,
     ptyManager: ptyManager as any,
     shellManager: {
@@ -127,9 +149,39 @@ function createDependencies(
       },
       execute: async () => ({ started: false, reason: "busy" })
     } as any,
+    devServerManager: {
+      start:
+        overrides.devStart ||
+        (async () => ({
+          started: true,
+          scriptName: "dev",
+          packageManager: "npm",
+          command: "npm run dev"
+        })),
+      getStatus:
+        overrides.devStatus ||
+        (() => ({
+          running: false,
+          status: "stopped",
+          workdir: process.cwd(),
+          startedByChatId: null,
+          command: null,
+          packageManager: null,
+          scriptName: null,
+          pid: null,
+          startedAt: null,
+          exitedAt: null,
+          exitCode: null,
+          signal: null,
+          detectedUrl: null
+        })),
+      stop: overrides.devStop || (() => false),
+      getLogs: overrides.devLogs || (() => "(no logs yet)"),
+      getUrl: overrides.devUrl || (() => null)
+    } as any,
     skills: {
       github: {
-        execute: async () => ({ text: "unused" }),
+        execute: overrides.githubExecute || (async () => ({ text: "unused" })),
         getTestStatus: async () => null
       },
       mcp: {
@@ -158,6 +210,123 @@ function createDependencies(
 
   return { bot };
 }
+
+test("dev start reports the selected frontend script", async () => {
+  const { bot } = createDependencies({
+    devStart: async () => ({
+      started: true,
+      scriptName: "start",
+      packageManager: "npm",
+      command: "npm run start"
+    })
+  });
+  const ctx = createContext("/dev start");
+  const handler = bot.commands.get("dev");
+
+  if (!handler) {
+    throw new Error("Expected /dev handler to be registered");
+  }
+
+  await handler(ctx);
+
+  assert.equal(ctx.replies.length > 0, true);
+  assert.match(ctx.replies[0].text, /npm run start/i);
+  assert.match(ctx.replies[0].text, /dev server|frontend/i);
+});
+
+test("dev status, url, and logs expose repo-scoped frontend runtime details", async () => {
+  const { bot } = createDependencies({
+    devStatus: () => ({
+      running: true,
+      status: "running",
+      workdir: process.cwd(),
+      startedByChatId: "1",
+      command: "npm run dev",
+      packageManager: "npm",
+      scriptName: "dev",
+      pid: 123,
+      startedAt: "2026-03-15T04:00:00.000Z",
+      exitedAt: null,
+      exitCode: null,
+      signal: null,
+      detectedUrl: "http://127.0.0.1:5173/"
+    }),
+    devLogs: () => "Local: http://127.0.0.1:5173/",
+    devUrl: () => "http://127.0.0.1:5173/"
+  });
+  const statusHandler = bot.commands.get("dev");
+
+  if (!statusHandler) {
+    throw new Error("Expected /dev handler to be registered");
+  }
+
+  const statusCtx = createContext("/dev status");
+  await statusHandler(statusCtx);
+  assert.equal(statusCtx.replies.length > 0, true);
+  assert.match(statusCtx.replies[0].text, /running/i);
+  assert.match(statusCtx.replies[0].text, /npm run dev/i);
+
+  const urlCtx = createContext("/dev url");
+  await statusHandler(urlCtx);
+  assert.match(urlCtx.replies[0].text, /5173/);
+
+  const logsCtx = createContext("/dev logs");
+  await statusHandler(logsCtx);
+  assert.match(logsCtx.replies[0].text, /Local:/);
+});
+
+test("status command includes the internal superpowers workflow phase", async () => {
+  const { bot } = createDependencies({
+    getStatus: () => ({
+      backend: "sdk",
+      active: false,
+      activeMode: null,
+      lastMode: "sdk",
+      lastExitCode: 0,
+      lastExitSignal: null,
+      projectSessionId: "thread-123",
+      preferredModel: null,
+      language: "en",
+      verboseOutput: true,
+      ptySupported: null,
+      workdir: process.cwd(),
+      relativeWorkdir: ".",
+      workspaceRoot: process.cwd(),
+      command: "codex",
+      mcpServers: [],
+      workflowSystem: "superpowers",
+      workflowPhase: "brainstorming"
+    })
+  });
+  const ctx = createContext("/status");
+  const handler = bot.commands.get("status");
+
+  if (!handler) {
+    throw new Error("Expected /status handler to be registered");
+  }
+
+  await handler(ctx);
+
+  assert.equal(ctx.replies.length > 0, true);
+  assert.match(ctx.replies[0].text, /workflow system: superpowers/i);
+  assert.match(ctx.replies[0].text, /workflow phase: brainstorming/i);
+});
+
+test("skill list explains that superpowers is internal and not toggleable", async () => {
+  const { bot } = createDependencies();
+  const ctx = createContext("/skill");
+  const handler = bot.commands.get("skill");
+
+  if (!handler) {
+    throw new Error("Expected /skill handler to be registered");
+  }
+
+  await handler(ctx);
+
+  assert.equal(ctx.replies.length > 0, true);
+  assert.match(ctx.replies[0].text, /internal workflow: superpowers/i);
+  assert.match(ctx.replies[0].text, /not toggleable/i);
+});
 
 test("text handler warns before starting a second codex run in the same workdir", async () => {
   const { bot } = createDependencies({
@@ -221,4 +390,38 @@ test("continue command reports when no blocked request is pending", async () => 
 
   assert.equal(ctx.replies.length > 0, true);
   assert.match(ctx.replies[0].text, /no blocked|nothing pending/i);
+});
+
+test("text handler shows guidance when plain-text github write actions are blocked", async () => {
+  const switched: Array<{ chatId: string | number; target: string }> = [];
+  const { bot } = createDependencies({
+    routeMessage: async (text: string) => ({
+      target: "skill" as const,
+      skill: "github" as const,
+      payload: text
+    }),
+    githubExecute: async () => ({
+      text: "GitHub write actions require explicit /gh commands. Use /gh create repo five-in-a-row."
+    }),
+    switchWorkdir: (chatId, target) => {
+      switched.push({ chatId, target });
+      return {
+        workdir: `/tmp/${target}`,
+        relativePath: target
+      };
+    }
+  });
+  const ctx = createContext("create repo five-in-a-row");
+  const textHandler = bot.events.get("text");
+
+  if (!textHandler) {
+    throw new Error("Expected text handler to be registered");
+  }
+
+  await textHandler(ctx);
+
+  assert.deepEqual(switched, []);
+  assert.equal(ctx.replies.length > 0, true);
+  assert.match(ctx.replies[0].text, /explicit/i);
+  assert.match(ctx.replies[0].text, /\/gh create repo/i);
 });

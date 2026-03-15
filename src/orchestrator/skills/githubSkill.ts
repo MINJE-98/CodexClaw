@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { spawn } from "node:child_process";
 import process from "node:process";
 import { simpleGit } from "simple-git";
@@ -20,6 +22,7 @@ interface GitRemoteResult {
 }
 
 interface GitLike {
+  init?(bare?: boolean, options?: string[]): Promise<unknown>;
   status(): Promise<GitStatusResult>;
   add(pathspec: string): Promise<unknown>;
   commit(message: string): Promise<unknown>;
@@ -34,6 +37,7 @@ interface ExecuteInput {
   text: string;
   workdir?: string;
   locale?: Locale;
+  chatId?: string | number;
 }
 
 export interface GitHubTestJob {
@@ -50,6 +54,15 @@ export interface GitHubTestJob {
 interface GitHubSkillResult {
   text: string;
   testJobId?: string;
+  switchToRepo?: string;
+}
+
+type PendingGitHubActionKind = "commit_and_push" | "push" | "create_repo";
+
+interface PendingGitHubAction {
+  kind: PendingGitHubActionKind;
+  rawText: string;
+  workdir?: string;
 }
 
 function buildAutoCommitMessage(status: GitStatusResult): string {
@@ -66,6 +79,38 @@ function extractQuotedMessage(text: string): string {
   return matched?.[1]?.trim() || "";
 }
 
+function slugifyRepoName(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/['"`]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function inferRepoNameFromProjectPhrase(text: string): string {
+  const patterns = [
+    /(?:create|build|make|start)\s+(?:a|an|the)?\s*([a-z0-9][a-z0-9\s-]{1,80})\s+(?:game|app|bot|site|tool|project|repo(?:sitory)?)/i,
+    /(?:创建|新建|做)\s*(?:一个|一個|个)?\s*([a-zA-Z0-9\s-]{1,80})\s*(?:游戏|遊戲|应用|應用|机器人|機器人|网站|網站|工具|项目|項目|仓库|倉庫)/u
+  ];
+  const leadingDescriptors =
+    /\b(?:web[- ]based|web|mobile|desktop|telegram|typescript|react|vue|next(?:\.js)?|node(?:\.js)?|simple|local|new)\b/gi;
+
+  for (const pattern of patterns) {
+    const matched = text.match(pattern);
+    const candidate = matched?.[1]
+      ?.replace(leadingDescriptors, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!candidate) continue;
+
+    const repoName = slugifyRepoName(candidate);
+    if (repoName) return repoName;
+  }
+
+  return "";
+}
+
 function extractRepoName(text: string): string {
   const patterns = [
     /(?:创建仓库|create repo(?:sitory)?|repo)\s*[:：]?\s*([a-zA-Z0-9._-]+)/i,
@@ -77,6 +122,9 @@ function extractRepoName(text: string): string {
     if (matched?.[1]) return matched[1];
   }
 
+  const inferredRepoName = inferRepoNameFromProjectPhrase(text);
+  if (inferredRepoName) return inferredRepoName;
+
   return "";
 }
 
@@ -86,17 +134,19 @@ function pickJobId(text: string, fallbackJobId: string): string {
 }
 
 export class GitHubSkill {
-  readonly config: Pick<AppConfig, "github">;
+  readonly config: Pick<AppConfig, "github" | "workspace">;
   readonly octokit: Octokit | null;
   readonly testJobs: Map<string, GitHubTestJob>;
+  readonly pendingActions: Map<string, PendingGitHubAction>;
   latestTestJobId: string;
 
-  constructor({ config }: { config: Pick<AppConfig, "github"> }) {
+  constructor({ config }: { config: Pick<AppConfig, "github" | "workspace"> }) {
     this.config = config;
     this.octokit = config.github.token
       ? new Octokit({ auth: config.github.token })
       : null;
     this.testJobs = new Map();
+    this.pendingActions = new Map();
     this.latestTestJobId = "";
   }
 
@@ -110,22 +160,142 @@ export class GitHubSkill {
     const normalized = text.toLowerCase();
     return (
       normalized.startsWith("/gh") ||
-      /github|git push|git commit|提交|推送|创建仓库|playwright|测试状态|run test|运行测试/.test(
+      /github|git push|git commit|提交|推送|创建仓库|create repo|create repository|new repo|repository|playwright|测试状态|run test|运行测试/.test(
         normalized
       )
     );
   }
 
+  private isExplicitCommand(text: string): boolean {
+    return text.trim().startsWith("/gh");
+  }
+
+  private classifyWriteAction(
+    normalized: string
+  ): PendingGitHubActionKind | null {
+    if (/创建仓库|create repo|new repo/.test(normalized)) {
+      return "create_repo";
+    }
+
+    if (/推送|\bpush\b/.test(normalized) && !/提交|commit/.test(normalized)) {
+      return "push";
+    }
+
+    if (/提交|推送|commit|push/.test(normalized)) {
+      return "commit_and_push";
+    }
+
+    return null;
+  }
+
+  private queuePendingAction(
+    chatId: string | number,
+    action: PendingGitHubAction
+  ): void {
+    this.pendingActions.set(String(chatId), action);
+  }
+
+  private popPendingAction(
+    chatId: string | number
+  ): PendingGitHubAction | null {
+    const key = String(chatId);
+    const action = this.pendingActions.get(key) || null;
+    if (action) {
+      this.pendingActions.delete(key);
+    }
+    return action;
+  }
+
+  private async executePendingAction(
+    action: PendingGitHubAction,
+    locale: Locale
+  ): Promise<GitHubSkillResult> {
+    switch (action.kind) {
+      case "create_repo":
+        return this.createRepoFromText(action.rawText, action.workdir, locale);
+      case "push":
+        return this.pushOnly(action.workdir, locale);
+      case "commit_and_push":
+        return this.commitAndPush(action.rawText, action.workdir, locale);
+      default:
+        return { text: this.helpText(locale) };
+    }
+  }
+
+  private isInsideWorkspaceRoot(targetPath: string): boolean {
+    const relative = path.relative(this.config.workspace.root, targetPath);
+    return (
+      relative === "" ||
+      (!relative.startsWith("..") && !path.isAbsolute(relative))
+    );
+  }
+
+  private resolveSiblingRepoPath(
+    repoName: string,
+    workdir: string | undefined,
+    locale: Locale
+  ): { targetPath: string; relativePath: string } {
+    const currentWorkdir = path.resolve(
+      workdir || this.config.github.defaultWorkdir
+    );
+    const currentRepoDir = fs.existsSync(path.join(currentWorkdir, ".git"))
+      ? currentWorkdir
+      : this.config.workspace.root;
+    const targetPath = path.resolve(path.dirname(currentRepoDir), repoName);
+
+    if (!this.isInsideWorkspaceRoot(targetPath)) {
+      throw new Error(t(locale, "targetOutsideWorkspaceRoot"));
+    }
+
+    return {
+      targetPath,
+      relativePath: path.relative(this.config.workspace.root, targetPath) || "."
+    };
+  }
+
   async execute({
     text,
     workdir,
-    locale = "en"
+    locale = "en",
+    chatId
   }: ExecuteInput): Promise<GitHubSkillResult> {
+    const explicit = this.isExplicitCommand(text);
     const stripped = text.replace(/^\/gh(@\w+)?\s*/i, "").trim();
     const normalized = stripped.toLowerCase();
+    const writeAction = this.classifyWriteAction(normalized);
 
     if (!stripped || normalized === "help") {
       return { text: this.helpText(locale) };
+    }
+
+    if (normalized === "confirm") {
+      if (chatId === undefined || chatId === null) {
+        return { text: t(locale, "githubNoPendingConfirmation") };
+      }
+
+      const pendingAction = this.popPendingAction(chatId);
+      if (!pendingAction) {
+        return { text: t(locale, "githubNoPendingConfirmation") };
+      }
+
+      return this.executePendingAction(pendingAction, locale);
+    }
+
+    if (writeAction && !explicit) {
+      return { text: t(locale, "githubExplicitWriteRequired") };
+    }
+
+    if (writeAction && explicit && chatId !== undefined && chatId !== null) {
+      this.queuePendingAction(chatId, {
+        kind: writeAction,
+        rawText: stripped,
+        workdir
+      });
+      return {
+        text: t(locale, "githubWriteConfirmationRequired", {
+          command: "/gh confirm"
+        })
+      };
     }
 
     if (/创建仓库|create repo|new repo/.test(normalized)) {
@@ -226,7 +396,19 @@ export class GitHubSkill {
       return { text: t(locale, "githubRepoNameParseFailed") };
     }
 
-    const git = this.getGit(workdir);
+    const { targetPath, relativePath } = this.resolveSiblingRepoPath(
+      repoName,
+      workdir,
+      locale
+    );
+    if (fs.existsSync(targetPath)) {
+      return {
+        text: t(locale, "githubRepoLocalPathExists", {
+          path: targetPath
+        })
+      };
+    }
+
     const isPrivate = !/public|公开/.test(rawText.toLowerCase());
     const { data: repo } = await this.octokit.repos.createForAuthenticatedUser({
       name: repoName,
@@ -234,26 +416,27 @@ export class GitHubSkill {
       auto_init: false
     });
 
-    const remotes = await git.getRemotes(true);
-    const origin = remotes.find((remote) => remote.name === "origin");
-    if (!origin) {
-      await git.addRemote("origin", repo.clone_url);
-    } else {
-      await git.remote(["set-url", "origin", repo.clone_url]);
+    fs.mkdirSync(targetPath, { recursive: false });
+    const git = this.getGit(targetPath);
+    if (!git.init) {
+      throw new Error("git init is unavailable for repository creation.");
     }
 
-    const branchInfo = await git.branch();
-    const branch = branchInfo.current || this.config.github.defaultBranch;
-
-    await git.push(["-u", "origin", branch]);
+    await git.init(false, [
+      "--initial-branch",
+      this.config.github.defaultBranch
+    ]);
+    await git.addRemote("origin", repo.clone_url);
 
     return {
       text: t(locale, "githubRepoCreated", {
-        workdir: workdir || this.config.github.defaultWorkdir,
+        workdir: targetPath,
+        relativeWorkdir: relativePath,
         repo: repo.full_name,
         url: repo.html_url,
-        branch
-      })
+        branch: this.config.github.defaultBranch
+      }),
+      switchToRepo: relativePath
     };
   }
 

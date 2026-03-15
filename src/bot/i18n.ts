@@ -40,7 +40,7 @@ const MESSAGES: Record<Locale, TranslationCatalog> = {
     buttonRefreshTestStatus: "Refresh test status",
     emptyResponse: "(empty response)",
     startLines: () => [
-      "codex-telegram-claws ready.",
+      "CodexClaw ready.",
       "Plain messages and coding tasks route to Codex.",
       "Bot-side MCP only runs through explicit /mcp commands.",
       "Try: /status, /repo, /pwd, /exec, /auto, /plan, /model, /language, /verbose, /skill, /new, /sh",
@@ -68,6 +68,7 @@ const MESSAGES: Record<Locale, TranslationCatalog> = {
       "/skill status - Alias of /skill list",
       "/skill on <name> - Enable a skill",
       "/skill off <name> - Disable a skill",
+      "/dev start|stop|status|logs|url - Manage a repo frontend dev server",
       "/sh <command> - Run a restricted Linux command (disabled by default)",
       "/sh --confirm <command> - Confirm a dangerous shell command",
       "/restart - Restart the bot process",
@@ -107,6 +108,8 @@ const MESSAGES: Record<Locale, TranslationCatalog> = {
       `workdir: ${status.workdir}`,
       `recent projects: ${recentProjects || "."}`,
       `project context: ${status.projectSessionId ? `resumable (${status.projectSessionId})` : "fresh"}`,
+      `workflow system: ${status.workflowSystem} (internal)`,
+      `workflow phase: ${status.workflowPhase}`,
       `safe shell: ${shellSummary}`,
       `skills: ${skillsSummary}`,
       `mcp servers: ${mcpSummary}`
@@ -162,6 +165,7 @@ const MESSAGES: Record<Locale, TranslationCatalog> = {
       joinLines([
         "Skills:",
         ...skillLines,
+        "internal workflow: superpowers (not toggleable from /skill)",
         "",
         "Usage: /skill list | /skill on <name> | /skill off <name>"
       ]),
@@ -174,6 +178,52 @@ const MESSAGES: Record<Locale, TranslationCatalog> = {
         ...skillLines
       ]),
     skillManagementFailed: ({ error }) => `Skill update failed: ${error}`,
+    usageDev:
+      "Usage: /dev start | /dev stop | /dev status | /dev logs | /dev url",
+    devStarted: ({ command, scriptName, relativeWorkdir }) =>
+      joinLines([
+        "Frontend dev server started.",
+        `project: ${relativeWorkdir}`,
+        `script: ${scriptName}`,
+        `command: ${command}`
+      ]),
+    devAlreadyRunning: ({ relativeWorkdir, startedByChatId, command }) =>
+      joinLines([
+        "A frontend dev server is already running for this repo.",
+        `project: ${relativeWorkdir}`,
+        `started by chat: ${startedByChatId}`,
+        `command: ${command}`
+      ]),
+    devNoPackageJson: ({ relativeWorkdir }) =>
+      `No package.json found in this repo: ${relativeWorkdir}`,
+    devNoScript: ({ relativeWorkdir, availableScripts }) =>
+      joinLines([
+        `No frontend start script found in this repo: ${relativeWorkdir}`,
+        `available scripts: ${availableScripts}`
+      ]),
+    devSpawnFailed: ({ error }) =>
+      `Failed to start the frontend dev server: ${error}`,
+    devStopped: ({ relativeWorkdir }) =>
+      `Stopped the frontend dev server for ${relativeWorkdir}.`,
+    devNotRunning: ({ relativeWorkdir }) =>
+      `No frontend dev server is running for ${relativeWorkdir}.`,
+    devStatus: ({ devStatus, relativeWorkdir }) =>
+      joinLines([
+        "Frontend dev server:",
+        `project: ${relativeWorkdir}`,
+        `status: ${devStatus.status}`,
+        `running: ${devStatus.running ? "yes" : "no"}`,
+        `started by chat: ${devStatus.startedByChatId || "n/a"}`,
+        `command: ${devStatus.command || "n/a"}`,
+        `pid: ${devStatus.pid ?? "n/a"}`,
+        `url: ${devStatus.detectedUrl || "not detected"}`
+      ]),
+    devLogs: ({ relativeWorkdir, logs }) =>
+      joinLines([`Frontend dev logs for ${relativeWorkdir}:`, "", logs]),
+    devUrl: ({ relativeWorkdir, url }) =>
+      joinLines([`Frontend dev URL for ${relativeWorkdir}:`, url]),
+    devNoUrl: ({ relativeWorkdir }) =>
+      `No frontend dev URL detected yet for ${relativeWorkdir}. Check /dev logs.`,
     conversationReset: ({ closed }) =>
       closed
         ? "The current project's conversation was cleared and the active session was closed. The next message will start a fresh Codex conversation in this project."
@@ -362,9 +412,24 @@ const MESSAGES: Record<Locale, TranslationCatalog> = {
         '/gh commit "feat: your message"',
         "/gh push",
         "/gh create repo my-new-repo",
+        "/gh confirm",
         "/gh run tests",
         "/gh test status <jobId>"
       ]),
+    githubExplicitWriteRequired: joinLines([
+      "GitHub write actions are blocked in plain text.",
+      "Use an explicit command instead:",
+      '- /gh commit "feat: your message"',
+      "- /gh push",
+      "- /gh create repo my-new-repo"
+    ]),
+    githubWriteConfirmationRequired: ({ command }) =>
+      joinLines([
+        "This GitHub write action requires confirmation.",
+        `Send: ${command}`
+      ]),
+    githubNoPendingConfirmation:
+      "There is no pending GitHub write action to confirm.",
     githubNoChanges: "No changes detected. Commit skipped.",
     githubCommitAndPushSucceeded: ({ workdir, branch, message }) =>
       joinLines([
@@ -390,14 +455,18 @@ const MESSAGES: Record<Locale, TranslationCatalog> = {
     githubMissingToken:
       "GITHUB_TOKEN is missing, so the GitHub API cannot create a repository.",
     githubRepoNameParseFailed:
-      "Could not parse a repository name. Example: /gh create repo codex-telegram-claws-demo",
-    githubRepoCreated: ({ workdir, repo, url, branch }) =>
+      "Could not parse a repository name. Example: /gh create repo codexclaw-demo",
+    githubRepoLocalPathExists: ({ path }) =>
+      `A local directory already exists for that repository: ${path}`,
+    githubRepoCreated: ({ workdir, relativeWorkdir, repo, url, branch }) =>
       joinLines([
         "Repository created and linked successfully.",
         `workdir: ${workdir}`,
+        `current project: ${relativeWorkdir}`,
         `repo: ${repo}`,
         `url: ${url}`,
-        `branch: ${branch}`
+        `branch: ${branch}`,
+        "Current chat has been switched to the new repository."
       ]),
     githubEmptyTestCommand:
       "E2E_TEST_COMMAND is empty, so no test job can be started.",
@@ -444,7 +513,7 @@ const MESSAGES: Record<Locale, TranslationCatalog> = {
     buttonRefreshTestStatus: "刷新测试状态",
     emptyResponse: "(空响应)",
     startLines: () => [
-      "codex-telegram-claws 已就绪。",
+      "CodexClaw 已就绪。",
       "普通消息和编码任务会路由到 Codex。",
       "Bot 侧 MCP 仅通过显式 /mcp 命令调用。",
       "试试: /status, /repo, /pwd, /exec, /auto, /plan, /model, /language, /verbose, /skill, /new, /sh",
@@ -472,6 +541,7 @@ const MESSAGES: Record<Locale, TranslationCatalog> = {
       "/skill status - 同 /skill list",
       "/skill on <name> - 启用 skill",
       "/skill off <name> - 禁用 skill",
+      "/dev start|stop|status|logs|url - 管理当前项目的前端开发服务",
       "/sh <command> - 执行受限 Linux 命令（默认关闭）",
       "/sh --confirm <command> - 确认执行高风险命令",
       "/restart - 重启 bot 进程",
@@ -511,6 +581,8 @@ const MESSAGES: Record<Locale, TranslationCatalog> = {
       `workdir: ${status.workdir}`,
       `recent projects: ${recentProjects || "."}`,
       `project context: ${status.projectSessionId ? `可恢复 (${status.projectSessionId})` : "全新"}`,
+      `workflow system: ${status.workflowSystem}（内部）`,
+      `workflow phase: ${status.workflowPhase}`,
       `safe shell: ${shellSummary}`,
       `skills: ${skillsSummary}`,
       `mcp servers: ${mcpSummary}`
@@ -566,6 +638,7 @@ const MESSAGES: Record<Locale, TranslationCatalog> = {
       joinLines([
         "Skills:",
         ...skillLines,
+        "内部工作流: superpowers（不能通过 /skill 开关）",
         "",
         "用法: /skill list | /skill on <name> | /skill off <name>"
       ]),
@@ -578,6 +651,51 @@ const MESSAGES: Record<Locale, TranslationCatalog> = {
         ...skillLines
       ]),
     skillManagementFailed: ({ error }) => `Skill 管理失败: ${error}`,
+    usageDev:
+      "用法: /dev start | /dev stop | /dev status | /dev logs | /dev url",
+    devStarted: ({ command, scriptName, relativeWorkdir }) =>
+      joinLines([
+        "前端开发服务已启动。",
+        `project: ${relativeWorkdir}`,
+        `script: ${scriptName}`,
+        `command: ${command}`
+      ]),
+    devAlreadyRunning: ({ relativeWorkdir, startedByChatId, command }) =>
+      joinLines([
+        "这个仓库已经有一个前端开发服务在运行。",
+        `project: ${relativeWorkdir}`,
+        `started by chat: ${startedByChatId}`,
+        `command: ${command}`
+      ]),
+    devNoPackageJson: ({ relativeWorkdir }) =>
+      `当前仓库没有 package.json: ${relativeWorkdir}`,
+    devNoScript: ({ relativeWorkdir, availableScripts }) =>
+      joinLines([
+        `当前仓库没有可用的前端启动脚本: ${relativeWorkdir}`,
+        `available scripts: ${availableScripts}`
+      ]),
+    devSpawnFailed: ({ error }) => `启动前端开发服务失败: ${error}`,
+    devStopped: ({ relativeWorkdir }) =>
+      `已停止 ${relativeWorkdir} 的前端开发服务。`,
+    devNotRunning: ({ relativeWorkdir }) =>
+      `${relativeWorkdir} 当前没有前端开发服务在运行。`,
+    devStatus: ({ devStatus, relativeWorkdir }) =>
+      joinLines([
+        "Frontend dev server:",
+        `project: ${relativeWorkdir}`,
+        `status: ${devStatus.status}`,
+        `running: ${devStatus.running ? "yes" : "no"}`,
+        `started by chat: ${devStatus.startedByChatId || "n/a"}`,
+        `command: ${devStatus.command || "n/a"}`,
+        `pid: ${devStatus.pid ?? "n/a"}`,
+        `url: ${devStatus.detectedUrl || "not detected"}`
+      ]),
+    devLogs: ({ relativeWorkdir, logs }) =>
+      joinLines([`Frontend dev logs for ${relativeWorkdir}:`, "", logs]),
+    devUrl: ({ relativeWorkdir, url }) =>
+      joinLines([`Frontend dev URL for ${relativeWorkdir}:`, url]),
+    devNoUrl: ({ relativeWorkdir }) =>
+      `${relativeWorkdir} 还没有识别到前端开发地址。请先查看 /dev logs。`,
     conversationReset: ({ closed }) =>
       closed
         ? "当前项目的会话上下文已清空，并关闭了活动会话。下一条消息会在当前项目启动全新 Codex 会话。"
@@ -750,9 +868,20 @@ const MESSAGES: Record<Locale, TranslationCatalog> = {
         '/gh commit "feat: your message"',
         "/gh push",
         "/gh create repo my-new-repo",
+        "/gh confirm",
         "/gh run tests",
         "/gh test status <jobId>"
       ]),
+    githubExplicitWriteRequired: joinLines([
+      "普通文本里的 GitHub 写操作已被拦截。",
+      "请改用显式命令：",
+      '- /gh commit "feat: your message"',
+      "- /gh push",
+      "- /gh create repo my-new-repo"
+    ]),
+    githubWriteConfirmationRequired: ({ command }) =>
+      joinLines(["这个 GitHub 写操作需要确认。", `发送：${command}`]),
+    githubNoPendingConfirmation: "当前没有待确认的 GitHub 写操作。",
     githubNoChanges: "没有检测到变更，跳过 commit。",
     githubCommitAndPushSucceeded: ({ workdir, branch, message }) =>
       joinLines([
@@ -773,14 +902,18 @@ const MESSAGES: Record<Locale, TranslationCatalog> = {
       joinLines(["推送成功。", `workdir: ${workdir}`, `branch: ${branch}`]),
     githubMissingToken: "缺少 GITHUB_TOKEN，无法调用 GitHub API 创建仓库。",
     githubRepoNameParseFailed:
-      "无法解析仓库名。示例: /gh create repo codex-telegram-claws-demo",
-    githubRepoCreated: ({ workdir, repo, url, branch }) =>
+      "无法解析仓库名。示例: /gh create repo codexclaw-demo",
+    githubRepoLocalPathExists: ({ path }) =>
+      `同名本地目录已存在，无法创建新仓库: ${path}`,
+    githubRepoCreated: ({ workdir, relativeWorkdir, repo, url, branch }) =>
       joinLines([
         "仓库创建并关联成功。",
         `workdir: ${workdir}`,
+        `current project: ${relativeWorkdir}`,
         `repo: ${repo}`,
         `url: ${url}`,
-        `branch: ${branch}`
+        `branch: ${branch}`,
+        "当前 chat 已切换到新仓库。"
       ]),
     githubEmptyTestCommand: "E2E_TEST_COMMAND 为空，无法启动测试。",
     githubTestsStarted: ({ jobId, workdir, command }) =>

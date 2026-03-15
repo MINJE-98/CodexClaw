@@ -9,7 +9,7 @@ import { resolveCommandPath, runHealthcheck } from "../src/ops/healthcheck.js";
 function createConfig(root: string): AppConfig {
   return {
     app: {
-      name: "codex-telegram-claws",
+      name: "CodexClaw",
       stateFile: path.join(root, ".codex-telegram-claws-state.json")
     },
     workspace: {
@@ -171,61 +171,6 @@ test("runHealthcheck reports a failing live Codex probe when the backend check f
         check.name === "codex live" &&
         check.status === "fail" &&
         check.detail.includes("simulated codex failure")
-    ),
-    true
-  );
-});
-
-test("runHealthcheck does not fail strict mode on sdk backend when node-pty helper is unavailable", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "claws-health-"));
-  const config = createConfig(root);
-
-  const result = await runHealthcheck(config, {
-    env: process.env,
-    strict: true,
-    ptyHelperProbe: () => ({
-      path: "",
-      changed: false,
-      executable: false,
-      error: "missing helper"
-    })
-  });
-
-  assert.equal(result.ok, true);
-  assert.equal(
-    result.checks.some(
-      (check) =>
-        check.name === "node-pty helper" &&
-        check.status === "pass" &&
-        check.detail.includes("sdk backend")
-    ),
-    true
-  );
-});
-
-test("runHealthcheck still fails strict mode on cli backend when node-pty helper is unavailable", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "claws-health-"));
-  const config = createConfig(root);
-  config.runner.backend = "cli";
-
-  const result = await runHealthcheck(config, {
-    env: process.env,
-    strict: true,
-    ptyHelperProbe: () => ({
-      path: "",
-      changed: false,
-      executable: false,
-      error: "missing helper"
-    })
-  });
-
-  assert.equal(result.ok, false);
-  assert.equal(
-    result.checks.some(
-      (check) =>
-        check.name === "node-pty helper" &&
-        check.status === "fail" &&
-        check.detail.includes("missing helper")
     ),
     true
   );

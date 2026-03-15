@@ -221,6 +221,20 @@ test("loadConfig falls back to the current working directory when configured pat
   assert.equal(config.mcp.servers[0].cwd, cwd);
 });
 
+test("loadConfig defaults the sdk sandbox to workspace-write when unset", () => {
+  const config = withEnv(
+    {
+      BOT_TOKEN: "telegram-token",
+      ALLOWED_USER_IDS: "1",
+      CODEX_BACKEND: "sdk"
+    },
+    () => loadConfig()
+  );
+
+  assert.equal(config.runner.backend, "sdk");
+  assert.equal(config.runner.sdkThreadOptions.sandboxMode, "workspace-write");
+});
+
 test("loadConfig requires shell allowlist when safe shell is enabled", () => {
   assert.throws(
     () =>
