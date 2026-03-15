@@ -39,6 +39,7 @@ interface HealthcheckOptions {
   telegramLiveCheck?: boolean;
   codexLiveCheck?: boolean;
   codexLiveRunner?: (config: AppConfig) => Promise<CodexLiveCheckResult>;
+  ptyHelperCheck?: typeof repairNodePtySpawnHelperPermissions;
 }
 
 interface TelegramGetMeResponse {
@@ -258,11 +259,23 @@ export async function runHealthcheck(
         )
   );
 
-  const ptyHelper = repairNodePtySpawnHelperPermissions();
+  const ptyHelperCheck =
+    options.ptyHelperCheck || repairNodePtySpawnHelperPermissions;
+  const ptyHelper = ptyHelperCheck();
   if (ptyHelper.error) {
-    checks.push(
-      makeCheck("node-pty helper", strict ? "fail" : "warn", ptyHelper.error)
-    );
+    if (config.runner.backend === "sdk") {
+      checks.push(
+        makeCheck(
+          "node-pty helper",
+          "pass",
+          `Not required for sdk backend (${ptyHelper.error})`
+        )
+      );
+    } else {
+      checks.push(
+        makeCheck("node-pty helper", strict ? "fail" : "warn", ptyHelper.error)
+      );
+    }
   } else if (ptyHelper.changed) {
     checks.push(
       makeCheck(

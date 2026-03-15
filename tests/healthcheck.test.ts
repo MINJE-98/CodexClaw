@@ -126,6 +126,30 @@ test("runHealthcheck fails when the configured command is missing in strict mode
   );
 });
 
+test("runHealthcheck skips node-pty helper failures in strict mode when backend is sdk", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "claws-health-"));
+  const config = createConfig(root);
+
+  const result = await runHealthcheck(config, {
+    env: process.env,
+    strict: true,
+    ptyHelperCheck: () => ({
+      path: "",
+      changed: false,
+      executable: false,
+      error: "simulated missing spawn-helper"
+    })
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(
+    result.checks.some(
+      (check) => check.name === "node-pty helper" && check.status === "pass"
+    ),
+    true
+  );
+});
+
 test("runHealthcheck reports a passing live Codex probe when the backend responds", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "claws-health-"));
   const config = createConfig(root);
