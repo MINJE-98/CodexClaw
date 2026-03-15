@@ -94,7 +94,7 @@ gh repo edit MackDing/CodexClaw \
 git checkout main
 git pull --ff-only
 BOT_TOKEN=dummy-token ALLOWED_USER_IDS=1 npm run release:check
-git tag v0.2.2
+git tag v0.2.3
 git push origin main --tags
 ```
 

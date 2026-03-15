@@ -1,6 +1,6 @@
 {
   "name": "CodexClaw",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "A super Telegram bot that securely orchestrates Codex via SDK or CLI/PTy streaming, MCP routing, and GitHub automation skills.",
   "type": "module",
   "main": "src/index.ts",
