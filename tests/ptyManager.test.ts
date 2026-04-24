@@ -238,6 +238,102 @@ test("pty manager tracks the last detected superpowers workflow phase per projec
   assert.equal(manager.getStatus(7).workflowPhase, "brainstorming");
 });
 
+test("pty manager renders SDK todo command and file progress in Telegram", async () => {
+  const sentMessages: SentMessageRecord[] = [];
+  const manager = createManager({
+    backend: "sdk",
+    telegram: {
+      sendMessage: async (chatId: string | number, text: string) => {
+        sentMessages.push({ chatId, text, messageId: sentMessages.length + 1 });
+        return { message_id: sentMessages.length };
+      },
+      editMessageText: async (
+        chatId: string | number,
+        messageId: number,
+        _inlineMessageId: unknown,
+        text: string
+      ) => {
+        sentMessages.push({ chatId, text, messageId, edited: true });
+        return {};
+      },
+      deleteMessage: async () => ({})
+    },
+    codexClientFactory: createFakeCodexClient([
+      {
+        events: async function* () {
+          yield {
+            type: "item.updated",
+            item: {
+              id: "todo-1",
+              type: "todo_list",
+              items: [
+                { text: "Inspect failing test", completed: true },
+                { text: "Patch renderer", completed: false }
+              ]
+            }
+          };
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          yield {
+            type: "item.updated",
+            item: {
+              id: "cmd-1",
+              type: "command_execution",
+              command: "npm test",
+              aggregated_output: "",
+              status: "in_progress"
+            }
+          };
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          yield {
+            type: "item.completed",
+            item: {
+              id: "cmd-1",
+              type: "command_execution",
+              command: "npm test",
+              aggregated_output: "111 tests passed",
+              exit_code: 0,
+              status: "completed"
+            }
+          };
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          yield {
+            type: "item.completed",
+            item: {
+              id: "files-1",
+              type: "file_change",
+              changes: [{ kind: "update", path: "src/runner/ptyManager.ts" }],
+              status: "completed"
+            }
+          };
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          yield {
+            type: "turn.completed",
+            usage: {
+              input_tokens: 11,
+              cached_input_tokens: 2,
+              output_tokens: 7
+            }
+          };
+        }
+      }
+    ])
+  });
+
+  await manager.sendPrompt({ chat: { id: 42 } }, "improve telegram ux");
+  await waitFor(() => !manager.getStatus(42).active);
+  await waitFor(() => sentMessages.length > 0);
+
+  const rendered = sentMessages.at(-1)?.text || "";
+  assert.match(rendered, /Plan/);
+  assert.match(rendered, /Inspect failing test/);
+  assert.match(rendered, /Patch renderer/);
+  assert.match(rendered, /cmd:completed/);
+  assert.match(rendered, /npm test/);
+  assert.match(rendered, /exit 0/);
+  assert.match(rendered, /files:completed/);
+  assert.match(rendered, /src\/runner\/ptyManager\\.ts/);
+});
+
 test("pty manager lists git projects under workspace root", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "claws-workspace-"));
   const projectA = path.join(root, "project-a");

@@ -15,7 +15,7 @@ import { escapeMarkdownV2, splitTelegramMessage } from "./formatter.js";
 import type { Scheduler } from "../cron/scheduler.js";
 import { toErrorMessage } from "../lib/errors.js";
 import type { Router } from "../orchestrator/router.js";
-import type { PtyManager } from "../runner/ptyManager.js";
+import type { PtyManager, PtyManagerStatus } from "../runner/ptyManager.js";
 import type {
   ShellExecutionResult,
   ShellManager
@@ -46,7 +46,7 @@ interface RegisterHandlersOptions {
 async function sendChunkedMarkdown(
   ctx: any,
   text: string,
-  extra: Record<string, unknown> = {}
+  extra: any = {}
 ): Promise<void> {
   const markdown = escapeMarkdownV2(text);
   const chunks = splitTelegramMessage(markdown, 3900);
@@ -129,6 +129,102 @@ function formatSkillLines(
   );
 }
 
+function formatSwitch(value: boolean | null | undefined): string {
+  if (value === true) return "on";
+  if (value === false) return "off";
+  return "inherit";
+}
+
+function formatLastRun(status: Record<string, any>): string {
+  if (!status.lastMode) return "none";
+  const exit =
+    status.lastExitCode === null || status.lastExitCode === undefined
+      ? "n/a"
+      : String(status.lastExitCode);
+  const signal = status.lastExitSignal
+    ? ` signal ${status.lastExitSignal}`
+    : "";
+  return `${status.lastMode} exit ${exit}${signal}`;
+}
+
+function formatDashboardText({
+  status,
+  recentProjects,
+  shellSummary,
+  skillsSummary,
+  mcpSummary
+}: {
+  status: Partial<PtyManagerStatus> & Record<string, any>;
+  recentProjects: string;
+  shellSummary: string;
+  skillsSummary: string;
+  mcpSummary: string;
+}): string {
+  const active = status.active
+    ? `running (${status.activeMode || "unknown"})`
+    : "idle";
+  const project = status.relativeWorkdir || ".";
+  const thread = status.projectSessionId || "fresh";
+  const model = status.preferredModel || "Codex default";
+  const sandbox = status.sandboxMode || "default";
+  const approval = status.approvalPolicy || "default";
+  const reasoning = status.reasoningEffort || "inherit";
+  const search = status.webSearchMode || "inherit";
+  const scope = status.additionalDirectories?.length
+    ? status.additionalDirectories.join(", ")
+    : "workspace only";
+
+  return [
+    "Codex Dashboard",
+    `State: ${active}`,
+    `Project: ${project}`,
+    `Thread: ${thread}`,
+    `Model: ${model}`,
+    `Reasoning: ${reasoning}`,
+    `Safety: ${sandbox} / ${approval}`,
+    `Network: ${formatSwitch(status.networkAccessEnabled)}`,
+    `Search: ${search}`,
+    `Scope: ${scope}`,
+    `Verbose: ${status.verboseOutput ? "on" : "off"}`,
+    `Last: ${formatLastRun(status)}`,
+    `Recent: ${recentProjects || "."}`,
+    "",
+    "Runtime Details",
+    `backend: ${status.backend || "unknown"}`,
+    `command: ${status.command || "codex"}`,
+    `workspace root: ${status.workspaceRoot || "."}`,
+    `workdir: ${status.workdir || "."}`,
+    `safe shell: ${shellSummary}`,
+    `skills: ${skillsSummary}`,
+    `mcp servers: ${mcpSummary}`,
+    `workflow system: ${status.workflowSystem || "superpowers"}`,
+    `workflow phase: ${status.workflowPhase || "none"}`
+  ].join("\n");
+}
+
+function dashboardKeyboard(
+  status: Partial<PtyManagerStatus> & Record<string, any>
+) {
+  const verboseLabel = status.verboseOutput ? "Verbose off" : "Verbose on";
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback("Refresh", "dash:refresh"),
+      Markup.button.callback("New", "dash:new"),
+      Markup.button.callback("Repo", "dash:repo"),
+      Markup.button.callback("Model", "dash:model")
+    ],
+    [
+      Markup.button.callback("Safety", "dash:safety"),
+      Markup.button.callback(verboseLabel, "dash:verbose"),
+      Markup.button.callback("Stop", "dash:stop")
+    ],
+    [
+      Markup.button.callback("GitHub", "dash:github"),
+      Markup.button.callback("Dev", "dash:dev")
+    ]
+  ]);
+}
+
 function suggestProjectName(
   input: string,
   projects: Array<{ relativePath: string; name?: string }>
@@ -208,6 +304,80 @@ function buildShellSuccessFollowUp(
   });
 }
 
+async function sendRepoList(
+  ctx: any,
+  locale: Locale,
+  ptyManager: PtyManager
+): Promise<void> {
+  const status = ptyManager.getStatus(ctx.chat.id);
+  const projects = ptyManager.listProjects();
+  const recent = ptyManager.getRecentProjects(ctx.chat.id);
+  const lines = formatProjectLines(projects, status.workdir);
+  const recentLines = recent.map((project) => `- ${project.relativePath}`);
+
+  await sendChunkedMarkdown(
+    ctx,
+    t(locale, "repoList", {
+      workspaceRoot: status.workspaceRoot,
+      projectLines: lines,
+      recentLines
+    })
+  );
+}
+
+async function sendDashboard(
+  ctx: any,
+  locale: Locale,
+  {
+    ptyManager,
+    shellManager,
+    skills,
+    skillRegistry
+  }: Pick<
+    RegisterHandlersOptions,
+    "ptyManager" | "shellManager" | "skills" | "skillRegistry"
+  >
+): Promise<void> {
+  const status = ptyManager.getStatus(ctx.chat.id);
+  const skillStates = skillRegistry.list(ctx.chat.id);
+  const mcpServers = skills.mcp.mcpClient.listServers();
+  const shellSummary = shellManager.isEnabled()
+    ? `enabled, ${shellManager.isReadOnly() ? "read-only" : "writable"} (${shellManager.getAllowedCommands().length} prefixes)`
+    : "disabled";
+  const skillsSummary =
+    skillStates
+      .map(
+        (skill: { name: string; enabled: boolean }) =>
+          `${skill.name}:${skill.enabled ? "on" : "off"}`
+      )
+      .join(", ") || "none";
+  const mcpSummary = mcpServers.length
+    ? mcpServers
+        .map(
+          (server: { name: string; enabled: boolean; connected: boolean }) =>
+            `${server.name}:${server.enabled ? "on" : "off"}/${server.connected ? "up" : "down"}`
+        )
+        .join(", ")
+    : "none";
+  const recentProjects =
+    ptyManager
+      .getRecentProjects(ctx.chat.id)
+      .map((item) => item.relativePath)
+      .join(", ") || ".";
+
+  await sendChunkedMarkdown(
+    ctx,
+    formatDashboardText({
+      status,
+      recentProjects,
+      shellSummary,
+      skillsSummary,
+      mcpSummary
+    }),
+    dashboardKeyboard(status)
+  );
+}
+
 export function registerHandlers({
   bot,
   router,
@@ -268,10 +438,12 @@ export function registerHandlers({
   };
 
   bot.start(async (ctx: any) => {
-    await sendChunkedMarkdown(
-      ctx,
-      t(localeOf(ctx.chat.id), "startLines").join("\n")
-    );
+    await sendDashboard(ctx, localeOf(ctx.chat.id), {
+      ptyManager,
+      shellManager,
+      skills,
+      skillRegistry
+    });
   });
 
   bot.command("help", async (ctx: any) => {
@@ -283,41 +455,12 @@ export function registerHandlers({
 
   bot.command("status", async (ctx: any) => {
     const locale = localeOf(ctx.chat.id);
-    const status = ptyManager.getStatus(ctx.chat.id);
-    const skillStates = skillRegistry.list(ctx.chat.id);
-    const mcpServers = skills.mcp.mcpClient.listServers();
-    const shellSummary = shellManager.isEnabled()
-      ? `enabled, ${shellManager.isReadOnly() ? "read-only" : "writable"} (${shellManager.getAllowedCommands().length} prefixes)`
-      : "disabled";
-    const skillsSummary =
-      skillStates
-        .map(
-          (skill: { name: string; enabled: boolean }) =>
-            `${skill.name}:${skill.enabled ? "on" : "off"}`
-        )
-        .join(", ") || "none";
-    const mcpSummary = mcpServers.length
-      ? mcpServers
-          .map(
-            (server: { name: string; enabled: boolean; connected: boolean }) =>
-              `${server.name}:${server.enabled ? "on" : "off"}/${server.connected ? "up" : "down"}`
-          )
-          .join(", ")
-      : "none";
-    await sendChunkedMarkdown(
-      ctx,
-      t(locale, "statusLines", {
-        status,
-        recentProjects:
-          ptyManager
-            .getRecentProjects(ctx.chat.id)
-            .map((item) => item.relativePath)
-            .join(", ") || ".",
-        shellSummary,
-        skillsSummary,
-        mcpSummary
-      }).join("\n")
-    );
+    await sendDashboard(ctx, locale, {
+      ptyManager,
+      shellManager,
+      skills,
+      skillRegistry
+    });
   });
 
   bot.command("pwd", async (ctx: any) => {
@@ -341,19 +484,7 @@ export function registerHandlers({
     const status = ptyManager.getStatus(ctx.chat.id);
 
     if (!payload) {
-      const projects = ptyManager.listProjects();
-      const recent = ptyManager.getRecentProjects(ctx.chat.id);
-      const lines = formatProjectLines(projects, status.workdir);
-      const recentLines = recent.map((project) => `- ${project.relativePath}`);
-
-      await sendChunkedMarkdown(
-        ctx,
-        t(locale, "repoList", {
-          workspaceRoot: status.workspaceRoot,
-          projectLines: lines,
-          recentLines
-        })
-      );
+      await sendRepoList(ctx, locale, ptyManager);
       return;
     }
 
@@ -898,6 +1029,80 @@ export function registerHandlers({
   bot.on("callback_query", async (ctx: any) => {
     const locale = localeOf(ctx.chat.id);
     const data = ctx.callbackQuery?.data || "";
+    if (data.startsWith("dash:")) {
+      const action = data.replace("dash:", "");
+      await ctx.answerCbQuery();
+
+      if (action === "refresh") {
+        await sendDashboard(ctx, locale, {
+          ptyManager,
+          shellManager,
+          skills,
+          skillRegistry
+        });
+        return;
+      }
+
+      if (action === "new") {
+        const result = ptyManager.resetCurrentProjectConversation(ctx.chat.id);
+        await sendChunkedMarkdown(
+          ctx,
+          t(locale, "conversationReset", { closed: result.closed })
+        );
+        return;
+      }
+
+      if (action === "repo") {
+        await sendRepoList(ctx, locale, ptyManager);
+        return;
+      }
+
+      if (action === "model") {
+        const status = ptyManager.getStatus(ctx.chat.id);
+        await sendChunkedMarkdown(
+          ctx,
+          [
+            t(locale, "modelCurrent", { model: status.preferredModel }),
+            "Set: /model <name>",
+            "Reset: /model reset"
+          ].join("\n")
+        );
+        return;
+      }
+
+      if (action === "safety") {
+        const status = ptyManager.getStatus(ctx.chat.id);
+        await sendChunkedMarkdown(
+          ctx,
+          [
+            `Safety: ${status.sandboxMode} / ${status.approvalPolicy}`,
+            `Network: ${formatSwitch(status.networkAccessEnabled)}`,
+            `Search: ${status.webSearchMode}`,
+            "Change these via CODEX_SDK_* env vars for now."
+          ].join("\n")
+        );
+        return;
+      }
+
+      if (action === "verbose") {
+        const status = ptyManager.getStatus(ctx.chat.id);
+        const enabled = !status.verboseOutput;
+        ptyManager.setVerbose(ctx.chat.id, enabled);
+        await sendChunkedMarkdown(ctx, t(locale, "verboseSet", { enabled }));
+        return;
+      }
+
+      if (action === "stop") {
+        const ok = ptyManager.closeSession(ctx.chat.id);
+        await sendChunkedMarkdown(ctx, t(locale, "stopResult", { ok }));
+        return;
+      }
+
+      const command = action === "github" ? "/gh help" : "/dev status";
+      await sendChunkedMarkdown(ctx, `Use ${command}`);
+      return;
+    }
+
     if (!data.startsWith("gh:test_status:")) return;
 
     const jobId = data.replace("gh:test_status:", "");

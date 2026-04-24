@@ -237,6 +237,12 @@ export interface PtyManagerStatus {
   relativeWorkdir: string;
   workspaceRoot: string;
   command: string;
+  sandboxMode: string;
+  approvalPolicy: string;
+  reasoningEffort: string;
+  networkAccessEnabled: boolean | null;
+  webSearchMode: string;
+  additionalDirectories: string[];
   mcpServers: string[];
   workflowSystem: "superpowers";
   workflowPhase: WorkflowPhase | "working" | "none";
@@ -311,26 +317,74 @@ function summarizeSdkItem(item: ThreadItem, verbose: boolean): string | null {
     case "error":
       return item.message?.trim() ? `[error] ${item.message}` : null;
     case "command_execution":
-      return verbose && item.command ? `[command] ${item.command}` : null;
+      return summarizeCommandExecution(item, verbose);
     case "mcp_tool_call":
-      return verbose
-        ? `[mcp] ${item.server}/${item.tool} (${item.status})`
-        : null;
+      return summarizeMcpToolCall(item, verbose);
     case "web_search":
-      return verbose ? `[web] ${item.query}` : null;
+      return item.query?.trim() ? `[web] ${item.query}` : null;
     case "todo_list":
-      return verbose && item.items.length
-        ? item.items
-            .map((entry) => `- [${entry.completed ? "x" : " "}] ${entry.text}`)
-            .join("\n")
-        : null;
+      return summarizeTodoList(item);
     case "file_change":
-      return verbose && item.changes.length
-        ? `[files] ${item.changes.map((change) => `${change.kind}:${change.path}`).join(", ")}`
-        : null;
+      return summarizeFileChange(item);
     default:
       return null;
   }
+}
+
+function summarizeTodoList(
+  item: Extract<ThreadItem, { type: "todo_list" }>
+): string | null {
+  if (!item.items.length) return null;
+  return [
+    "Plan:",
+    ...item.items.map(
+      (entry) => `- [${entry.completed ? "x" : " "}] ${entry.text}`
+    )
+  ].join("\n");
+}
+
+function summarizeCommandExecution(
+  item: Extract<ThreadItem, { type: "command_execution" }>,
+  verbose: boolean
+): string | null {
+  if (!item.command?.trim()) return null;
+
+  const exit = item.exit_code === undefined ? "" : ` exit ${item.exit_code}`;
+  const lines = [`[cmd:${item.status}${exit}]`, item.command];
+  const output = item.aggregated_output?.trim();
+  if (output && (verbose || item.status === "failed")) {
+    lines.push("output:", tailText(output, 2000));
+  }
+  return lines.join("\n");
+}
+
+function summarizeFileChange(
+  item: Extract<ThreadItem, { type: "file_change" }>
+): string | null {
+  if (!item.changes.length) return null;
+  return [
+    `[files:${item.status}]`,
+    ...item.changes.map((change) => `- ${change.kind}:${change.path}`)
+  ].join("\n");
+}
+
+function summarizeMcpToolCall(
+  item: Extract<ThreadItem, { type: "mcp_tool_call" }>,
+  verbose: boolean
+): string | null {
+  const lines = [`[mcp:${item.status}] ${item.server}/${item.tool}`];
+  if (item.status === "failed" && item.error?.message) {
+    lines.push(`error: ${item.error.message}`);
+  } else if (verbose && item.result?.content?.length) {
+    lines.push(`result blocks: ${item.result.content.length}`);
+  }
+  return lines.join("\n");
+}
+
+function tailText(text: string, maxChars: number): string {
+  const normalized = String(text || "").trim();
+  if (normalized.length <= maxChars) return normalized;
+  return `...${normalized.slice(-maxChars)}`;
 }
 
 const WORKFLOW_PHASE_MARKERS: ReadonlyArray<{
@@ -1790,6 +1844,21 @@ export class PtyManager {
       relativeWorkdir: this.getRelativeWorkdir(key),
       workspaceRoot: this.config.workspace.root,
       command: this.config.runner.command,
+      sandboxMode: this.config.runner.sdkThreadOptions.sandboxMode || "default",
+      approvalPolicy:
+        this.config.runner.sdkThreadOptions.approvalPolicy || "default",
+      reasoningEffort:
+        this.config.runner.sdkThreadOptions.modelReasoningEffort || "inherit",
+      networkAccessEnabled:
+        typeof this.config.runner.sdkThreadOptions.networkAccessEnabled ===
+        "boolean"
+          ? this.config.runner.sdkThreadOptions.networkAccessEnabled
+          : null,
+      webSearchMode:
+        this.config.runner.sdkThreadOptions.webSearchMode || "inherit",
+      additionalDirectories: [
+        ...this.config.runner.sdkThreadOptions.additionalDirectories
+      ],
       mcpServers: this.config.mcp.servers.map((server) => server.name),
       workflowSystem: "superpowers",
       workflowPhase: session

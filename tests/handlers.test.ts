@@ -78,6 +78,9 @@ function createDependencies(
     shellExecute?: () => Promise<Record<string, unknown>>;
     getStatus?: () => Record<string, unknown>;
     switchWorkdir?: (chatId: string | number, target: string) => unknown;
+    resetCurrentProjectConversation?: () => Record<string, unknown>;
+    closeSession?: () => boolean;
+    setVerbose?: (chatId: string | number, enabled: boolean) => boolean;
     devStart?: () => Promise<unknown>;
     devStatus?: () => Record<string, unknown>;
     devStop?: () => boolean;
@@ -118,17 +121,31 @@ function createDependencies(
         relativeWorkdir: ".",
         workspaceRoot: process.cwd(),
         command: "codex",
+        sandboxMode: "workspace-write",
+        approvalPolicy: "never",
+        reasoningEffort: "inherit",
+        networkAccessEnabled: false,
+        webSearchMode: "disabled",
         mcpServers: [],
         workflowSystem: "superpowers",
         workflowPhase: "none"
       })),
     getRecentProjects: () => [],
+    listProjects: () => [],
     switchWorkdir:
       overrides.switchWorkdir ||
       (() => ({
         workdir: process.cwd(),
         relativePath: "."
-      }))
+      })),
+    resetCurrentProjectConversation:
+      overrides.resetCurrentProjectConversation ||
+      (() => ({
+        closed: false,
+        workdir: process.cwd()
+      })),
+    closeSession: overrides.closeSession || (() => false),
+    setVerbose: overrides.setVerbose || (() => true)
   };
 
   registerHandlers({
@@ -373,6 +390,66 @@ test("status command includes the internal superpowers workflow phase", async ()
   assert.equal(ctx.replies.length > 0, true);
   assert.match(ctx.replies[0].text, /workflow system: superpowers/i);
   assert.match(ctx.replies[0].text, /workflow phase: brainstorming/i);
+});
+
+test("status command renders a Codex dashboard with action buttons", async () => {
+  const { bot } = createDependencies({
+    getStatus: () => ({
+      backend: "sdk",
+      active: true,
+      activeMode: "sdk",
+      lastMode: "sdk",
+      lastExitCode: 0,
+      lastExitSignal: null,
+      projectSessionId: "thread-123",
+      preferredModel: "gpt-5.4",
+      language: "en",
+      verboseOutput: true,
+      ptySupported: null,
+      workdir: process.cwd(),
+      relativeWorkdir: "CodexClaw",
+      workspaceRoot: "/Users/home",
+      command: "codex",
+      sandboxMode: "workspace-write",
+      approvalPolicy: "never",
+      reasoningEffort: "high",
+      networkAccessEnabled: true,
+      webSearchMode: "live",
+      mcpServers: ["github"],
+      workflowSystem: "superpowers",
+      workflowPhase: "working"
+    })
+  });
+  const ctx = createContext("/status");
+  const handler = bot.commands.get("status");
+
+  if (!handler) {
+    throw new Error("Expected /status handler to be registered");
+  }
+
+  await handler(ctx);
+
+  assert.equal(ctx.replies.length > 0, true);
+  assert.match(ctx.replies[0].text, /Codex Dashboard/i);
+  assert.match(ctx.replies[0].text, /Project: CodexClaw/i);
+  assert.match(ctx.replies[0].text, /Thread: thread\\-123/i);
+  assert.match(ctx.replies[0].text, /Safety: workspace\\-write \/ never/i);
+  assert.match(ctx.replies[0].text, /Search: live/i);
+
+  const keyboard = ctx.replies[0].options?.reply_markup as {
+    inline_keyboard?: Array<Array<{ callback_data?: string }>>;
+  };
+  const callbacks = (keyboard?.inline_keyboard || [])
+    .flat()
+    .map((button) => button.callback_data);
+
+  assert.deepEqual(callbacks.slice(0, 4), [
+    "dash:refresh",
+    "dash:new",
+    "dash:repo",
+    "dash:model"
+  ]);
+  assert.ok(callbacks.includes("dash:stop"));
 });
 
 test("skill list explains that superpowers is internal and not toggleable", async () => {
