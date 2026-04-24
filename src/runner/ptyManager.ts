@@ -319,15 +319,17 @@ function summarizeSdkItem(item: ThreadItem, verbose: boolean): string | null {
     case "error":
       return item.message?.trim() ? `[error] ${item.message}` : null;
     case "command_execution":
+      if (!verbose && item.status !== "failed") return null;
       return summarizeCommandExecution(item, verbose);
     case "mcp_tool_call":
+      if (!verbose && item.status !== "failed") return null;
       return summarizeMcpToolCall(item, verbose);
     case "web_search":
-      return item.query?.trim() ? `[web] ${item.query}` : null;
+      return verbose && item.query?.trim() ? `[web] ${item.query}` : null;
     case "todo_list":
-      return summarizeTodoList(item);
+      return verbose ? summarizeTodoList(item) : null;
     case "file_change":
-      return summarizeFileChange(item);
+      return verbose ? summarizeFileChange(item) : null;
     default:
       return null;
   }
@@ -1036,20 +1038,21 @@ export class PtyManager {
     }
   }
 
-  updateSdkRenderableItem(session: RunnerSession, item: ThreadItem): void {
+  updateSdkRenderableItem(session: RunnerSession, item: ThreadItem): boolean {
     const text = summarizeSdkItem(item, this.isVerbose(session.chatId));
     const hasEntry = session.renderableItems.has(item.id);
 
     if (!text) {
-      if (hasEntry) {
-        session.renderableItems.delete(item.id);
-        session.renderableItemOrder = session.renderableItemOrder.filter(
-          (entryId) => entryId !== item.id
-        );
+      if (!hasEntry) {
+        return false;
       }
+      session.renderableItems.delete(item.id);
+      session.renderableItemOrder = session.renderableItemOrder.filter(
+        (entryId) => entryId !== item.id
+      );
       session.rawBuffer = this.composeSdkRawBuffer(session);
       this.captureWorkflowPhase(session);
-      return;
+      return true;
     }
 
     if (!hasEntry) {
@@ -1059,6 +1062,7 @@ export class PtyManager {
     session.renderableItems.set(item.id, text);
     session.rawBuffer = this.composeSdkRawBuffer(session);
     this.captureWorkflowPhase(session);
+    return true;
   }
 
   composeSdkRawBuffer(session: RunnerSession): string {
@@ -1288,8 +1292,9 @@ export class PtyManager {
           event.type === "item.updated" ||
           event.type === "item.completed"
         ) {
-          this.updateSdkRenderableItem(session, event.item);
-          session.throttledFlush();
+          if (this.updateSdkRenderableItem(session, event.item)) {
+            session.throttledFlush();
+          }
           continue;
         }
 

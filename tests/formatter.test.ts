@@ -37,6 +37,17 @@ test("formatPtyOutput renders visible output and spoiler reasoning", () => {
   assert.match(rendered, /\|\|private reasoning\|\|/);
 });
 
+test("formatPtyOutput renders local file links as Telegram-safe inline code", () => {
+  const rendered = formatPtyOutput(
+    "Updated [config.toml](/Users/home/.codex/config.toml:1)."
+  );
+
+  assert.equal(
+    rendered,
+    "Updated config\\.toml \\(`/Users/home/.codex/config.toml:1`\\)\\."
+  );
+});
+
 test("extractCodexExecResponse strips codex exec transcript noise and keeps the final assistant reply", () => {
   const raw = [
     "OpenAI Codex v0.114.0 (research preview)",

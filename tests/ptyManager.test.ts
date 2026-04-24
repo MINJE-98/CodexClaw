@@ -318,12 +318,17 @@ test("pty manager renders SDK todo command and file progress in Telegram", async
       }
     ])
   });
+  manager.setVerbose(42, true);
 
   await manager.sendPrompt({ chat: { id: 42 } }, "improve telegram ux");
   await waitFor(() => !manager.getStatus(42).active);
   await waitFor(() => sentMessages.length > 0);
 
-  const rendered = sentMessages.at(-1)?.text || "";
+  const rendered =
+    sentMessages
+      .map((message) => message.text)
+      .filter((text) => /Plan/.test(text))
+      .at(-1) || "";
   assert.match(rendered, /Plan/);
   assert.match(rendered, /Inspect failing test/);
   assert.match(rendered, /Patch renderer/);
@@ -332,6 +337,76 @@ test("pty manager renders SDK todo command and file progress in Telegram", async
   assert.match(rendered, /exit 0/);
   assert.match(rendered, /files:completed/);
   assert.match(rendered, /src\/runner\/ptyManager\\.ts/);
+});
+
+test("pty manager keeps SDK command progress out of non-verbose Telegram replies", async () => {
+  const sentMessages: SentMessageRecord[] = [];
+  const manager = createManager({
+    backend: "sdk",
+    telegram: {
+      sendMessage: async (chatId: string | number, text: string) => {
+        sentMessages.push({ chatId, text, messageId: sentMessages.length + 1 });
+        return { message_id: sentMessages.length };
+      },
+      editMessageText: async (
+        chatId: string | number,
+        messageId: number,
+        _inlineMessageId: unknown,
+        text: string
+      ) => {
+        sentMessages.push({ chatId, text, messageId, edited: true });
+        return {};
+      },
+      deleteMessage: async () => ({})
+    },
+    codexClientFactory: createFakeCodexClient([
+      {
+        events: async function* () {
+          yield {
+            type: "item.completed",
+            item: {
+              id: "cmd-1",
+              type: "command_execution",
+              command: "npm test",
+              aggregated_output: "passed",
+              exit_code: 0,
+              status: "completed"
+            }
+          };
+          yield {
+            type: "item.completed",
+            item: {
+              id: "files-1",
+              type: "file_change",
+              changes: [{ kind: "update", path: "src/runner/ptyManager.ts" }],
+              status: "completed"
+            }
+          };
+          yield {
+            type: "item.completed",
+            item: {
+              id: "agent-1",
+              type: "agent_message",
+              text: "Updated [config.toml](/Users/home/.codex/config.toml:1)."
+            }
+          };
+        }
+      }
+    ])
+  });
+
+  await manager.sendPrompt({ chat: { id: 42 } }, "format for telegram");
+  await waitFor(() => !manager.getStatus(42).active);
+  await waitFor(() => sentMessages.length > 0);
+
+  const rendered = sentMessages.at(-1)?.text || "";
+  assert.doesNotMatch(rendered, /cmd:completed/);
+  assert.doesNotMatch(rendered, /npm test/);
+  assert.doesNotMatch(rendered, /files:completed/);
+  assert.match(
+    rendered,
+    /Updated config\\.toml \\\(`\/Users\/home\/\.codex\/config\.toml:1`\\\)\\./
+  );
 });
 
 test("pty manager sends Telegram typing action during SDK turns", async () => {

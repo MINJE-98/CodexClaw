@@ -2,6 +2,7 @@ const THINK_BLOCK_REGEX = /<think>([\s\S]*?)<\/think>/gi;
 const TELEGRAM_SPECIAL_REGEX = /[_*[\]()~`>#+\-=|{}.!\\]/g;
 const CODEX_DIVIDER = "\n--------\n";
 const CODEX_TRANSCRIPT_HEADER_REGEX = /^OpenAI Codex v[^\n]*\n/;
+const MARKDOWN_LINK_REGEX = /\[([^\]\n]+)\]\(([^)\n]+)\)/g;
 
 export interface ReasoningExtraction {
   cleanText: string;
@@ -15,6 +16,45 @@ export interface FormatPtyOutputOptions {
 
 export function escapeMarkdownV2(input = ""): string {
   return String(input).replace(TELEGRAM_SPECIAL_REGEX, "\\$&");
+}
+
+function escapeMarkdownV2Code(input = ""): string {
+  return String(input).replace(/[\\`]/g, "\\$&");
+}
+
+function isLocalFileReference(target: string): boolean {
+  return (
+    target.startsWith("/") ||
+    target.startsWith("./") ||
+    target.startsWith("../") ||
+    target.startsWith("file://")
+  );
+}
+
+export function formatTelegramMarkdownV2(input = ""): string {
+  const source = String(input);
+  let rendered = "";
+  let consumedUntil = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = MARKDOWN_LINK_REGEX.exec(source))) {
+    const [fullMatch, rawLabel, rawTarget] = match;
+    const index = match.index;
+
+    if (!isLocalFileReference(rawTarget)) {
+      continue;
+    }
+
+    rendered += escapeMarkdownV2(source.slice(consumedUntil, index));
+    const target = rawTarget.startsWith("file://")
+      ? rawTarget.slice("file://".length)
+      : rawTarget;
+    rendered += `${escapeMarkdownV2(rawLabel)} \\(\`${escapeMarkdownV2Code(target)}\`\\)`;
+    consumedUntil = index + fullMatch.length;
+  }
+
+  rendered += escapeMarkdownV2(source.slice(consumedUntil));
+  return rendered;
 }
 
 export function extractReasoning(raw = ""): ReasoningExtraction {
@@ -162,7 +202,7 @@ export function formatPtyOutput(
   const sections = [];
 
   if (cleanText) {
-    sections.push(escapeMarkdownV2(cleanText));
+    sections.push(formatTelegramMarkdownV2(cleanText));
   }
 
   if (reasoningBlocks.length) {
