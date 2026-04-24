@@ -334,6 +334,47 @@ test("pty manager renders SDK todo command and file progress in Telegram", async
   assert.match(rendered, /src\/runner\/ptyManager\\.ts/);
 });
 
+test("pty manager sends Telegram typing action during SDK turns", async () => {
+  const chatActions: Array<{ chatId: string | number; action: string }> = [];
+  const telegram = {
+    sendMessage: async () => ({ message_id: 1 }),
+    editMessageText: async () => ({}),
+    deleteMessage: async () => ({}),
+    sendChatAction: async (chatId: string | number, action: string) => {
+      chatActions.push({ chatId, action });
+      return {};
+    }
+  };
+  const manager = createManager({
+    backend: "sdk",
+    telegram,
+    codexClientFactory: createFakeCodexClient([
+      {
+        events: async function* () {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          yield {
+            type: "item.completed",
+            item: {
+              id: "item-1",
+              type: "agent_message",
+              text: "done"
+            }
+          };
+        }
+      }
+    ])
+  });
+
+  await manager.sendPrompt({ chat: { id: 42 } }, "long running prompt");
+  await waitFor(() => chatActions.length > 0, 500);
+  await waitFor(() => !manager.getStatus(42).active);
+
+  assert.deepEqual(chatActions[0], {
+    chatId: "42",
+    action: "typing"
+  });
+});
+
 test("pty manager lists git projects under workspace root", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "claws-workspace-"));
   const projectA = path.join(root, "project-a");

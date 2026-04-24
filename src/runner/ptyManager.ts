@@ -42,6 +42,7 @@ interface TelegramApiLike {
     text: string,
     options?: Record<string, unknown>
   ): Promise<TelegramMessage>;
+  sendChatAction?(chatId: string | number, action: "typing"): Promise<unknown>;
   editMessageText(
     chatId: string | number,
     messageId: number,
@@ -109,6 +110,7 @@ interface RunnerSession {
   lastRendered: string;
   flushQueue: Promise<void>;
   throttledFlush: ReturnType<typeof throttle>;
+  typingTimer: ReturnType<typeof setInterval> | null;
   write: ((input: string) => void) | null;
   interrupt: (() => void) | null;
   close: (() => void) | null;
@@ -465,6 +467,8 @@ function detectWorkflowPhase(rawText: string): WorkflowPhase | null {
 
   return bestMatch?.phase || null;
 }
+
+const TELEGRAM_TYPING_HEARTBEAT_MS = 4000;
 
 export class PtyManager {
   readonly bot: BotLike;
@@ -984,6 +988,7 @@ export class PtyManager {
         this.config.runner.throttleMs,
         { leading: true, trailing: true }
       ),
+      typingTimer: null,
       write: null,
       interrupt: null,
       close: null,
@@ -991,7 +996,30 @@ export class PtyManager {
     };
 
     this.sessions.set(key, session);
+    this.startTypingHeartbeat(session);
     return session;
+  }
+
+  startTypingHeartbeat(session: RunnerSession): void {
+    if (session.mode === "pty" || !this.bot.telegram.sendChatAction) {
+      return;
+    }
+
+    const sendTyping = () => {
+      void this.bot.telegram
+        .sendChatAction?.(session.chatId, "typing")
+        .catch(() => {});
+    };
+
+    sendTyping();
+    session.typingTimer = setInterval(sendTyping, TELEGRAM_TYPING_HEARTBEAT_MS);
+    session.typingTimer.unref?.();
+  }
+
+  stopTypingHeartbeat(session: RunnerSession): void {
+    if (!session.typingTimer) return;
+    clearInterval(session.typingTimer);
+    session.typingTimer = null;
   }
 
   captureSessionMetadata(session: RunnerSession): void {
@@ -1046,6 +1074,7 @@ export class PtyManager {
     exitCode: number | null,
     signal: ExitSignal
   ): Promise<void> {
+    this.stopTypingHeartbeat(session);
     this.captureSessionMetadata(session);
     const projectState = this.ensureProjectState(
       session.chatId,
@@ -1186,6 +1215,7 @@ export class PtyManager {
     );
 
     proc.on("error", async (error) => {
+      this.stopTypingHeartbeat(session);
       await this.bot.telegram
         .sendMessage(
           session.chatId,
@@ -1666,6 +1696,7 @@ export class PtyManager {
     if (!session) return false;
 
     session.throttledFlush.cancel();
+    this.stopTypingHeartbeat(session);
     session.close?.();
     this.sessions.delete(key);
     return true;
