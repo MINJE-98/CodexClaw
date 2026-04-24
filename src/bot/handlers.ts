@@ -630,7 +630,13 @@ export function registerHandlers({
     }
 
     await sendChunkedMarkdown(ctx, t(locale, "restarting"));
-    await adminActions.restart();
+    const restart = adminActions.restart;
+    const timer = setTimeout(() => {
+      void restart().catch((error: unknown) => {
+        console.error("[bot] restart failed:", toErrorMessage(error));
+      });
+    }, 1000);
+    timer.unref?.();
   });
 
   bot.command("exec", async (ctx: any) => {

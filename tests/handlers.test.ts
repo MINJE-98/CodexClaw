@@ -86,6 +86,7 @@ function createDependencies(
     devStop?: () => boolean;
     devLogs?: () => string;
     devUrl?: () => string | null;
+    restart?: () => Promise<void>;
   } = {}
 ) {
   const bot = new FakeBot();
@@ -228,7 +229,12 @@ function createDependencies(
     } as any,
     scheduler: {
       triggerDailySummaryNow: async () => {}
-    } as any
+    } as any,
+    adminActions: overrides.restart
+      ? {
+          restart: overrides.restart
+        }
+      : undefined
   });
 
   return { bot };
@@ -466,6 +472,31 @@ test("skill list explains that superpowers is internal and not toggleable", asyn
   assert.equal(ctx.replies.length > 0, true);
   assert.match(ctx.replies[0].text, /internal workflow: superpowers/i);
   assert.match(ctx.replies[0].text, /not toggleable/i);
+});
+
+test("restart command schedules restart after replying", async () => {
+  let restartCalls = 0;
+  const { bot } = createDependencies({
+    restart: async () => {
+      restartCalls += 1;
+    }
+  });
+  const ctx = createContext("/restart");
+  const handler = bot.commands.get("restart");
+
+  if (!handler) {
+    throw new Error("Expected /restart handler to be registered");
+  }
+
+  await handler(ctx);
+
+  assert.equal(ctx.replies.length, 1);
+  assert.match(ctx.replies[0].text, /Restarting/i);
+  assert.equal(restartCalls, 0);
+
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+
+  assert.equal(restartCalls, 1);
 });
 
 test("text handler warns before starting a second codex run in the same workdir", async () => {
