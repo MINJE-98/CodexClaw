@@ -16,6 +16,7 @@ import { DevServerManager } from "./runner/devServerManager.js";
 import { Scheduler } from "./cron/scheduler.js";
 import { toErrorMessage } from "./lib/errors.js";
 import { createTelegramApiAgent } from "./lib/telegramApi.js";
+import { shouldSpawnDetachedRestart } from "./restartPolicy.js";
 
 const config = loadConfig();
 const telegramApiAgent = createTelegramApiAgent(config.telegram.proxyUrl);
@@ -45,22 +46,24 @@ async function saveRuntimeState(): Promise<void> {
 async function restartBotProcess(): Promise<void> {
   await saveRuntimeState();
 
-  const bootstrapScript = [
-    "const { spawn } = require('node:child_process');",
-    "const cliPath = require.resolve('tsx/dist/cli.mjs');",
-    "setTimeout(() => {",
-    `  const child = spawn(process.execPath, [cliPath, 'src/index.ts'], { cwd: ${JSON.stringify(process.cwd())}, env: process.env, detached: true, stdio: 'ignore' });`,
-    "  child.unref();",
-    "}, 1500);"
-  ].join("\n");
+  if (shouldSpawnDetachedRestart()) {
+    const bootstrapScript = [
+      "const { spawn } = require('node:child_process');",
+      "const cliPath = require.resolve('tsx/dist/cli.mjs');",
+      "setTimeout(() => {",
+      `  const child = spawn(process.execPath, [cliPath, 'src/index.ts'], { cwd: ${JSON.stringify(process.cwd())}, env: process.env, detached: true, stdio: 'ignore' });`,
+      "  child.unref();",
+      "}, 1500);"
+    ].join("\n");
 
-  const launcher = spawn(process.execPath, ["-e", bootstrapScript], {
-    cwd: process.cwd(),
-    env: process.env,
-    detached: true,
-    stdio: "ignore"
-  });
-  launcher.unref();
+    const launcher = spawn(process.execPath, ["-e", bootstrapScript], {
+      cwd: process.cwd(),
+      env: process.env,
+      detached: true,
+      stdio: "ignore"
+    });
+    launcher.unref();
+  }
 
   await shutdown("RESTART");
 }
